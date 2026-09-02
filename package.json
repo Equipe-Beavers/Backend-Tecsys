@@ -1,0 +1,31 @@
+{
+  "name": "backend-tecsys",
+  "version": "1.0.0",
+  "description": "Serviço backend em TypeScript responsável por servir a aplicação e consumir os dados processados do módulo ETL Tecsys.",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Equipe-Beavers/Backend-Tecsys.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Equipe-Beavers/Backend-Tecsys/issues"
+  },
+  "homepage": "https://github.com/Equipe-Beavers/Backend-Tecsys#readme",
+  "dependencies": {
+    "fastify": "^5.12.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}
