@@ -1,29 +1,107 @@
-import fastify from "fastify"
+import fastify, {
+    type FastifyInstance
+} from "fastify";
+
+import {
+    estudoRoutes
+} from "./routes/estudo.routes.js";
+
+import {
+    estudoPontoRoutes
+} from "./routes/estudo-ponto.routes.js";
+
+import {
+    usuarioRoutes
+} from "./routes/usuario.routes.js";
+
+import {
+    perfilRfRoutes
+} from "./routes/perfil-rf.routes.js";
+
+import {
+    criterioInstalacaoRoutes
+} from "./routes/criterio-instalacao.routes.js";
+
+import {
+    cenarioRoutes
+} from "./routes/cenario.routes.js";
+
+import {
+    cenarioGatewayRoutes
+} from "./routes/cenario-gateway.routes.js";
+
+import {
+    cenarioAtendimentoRoutes
+} from "./routes/cenario-atendimento.routes.js";
+
 
 class App {
-    public app: fastify.FastifyInstance;
+
+    public app: FastifyInstance;
+
+
     constructor() {
-        this.app = fastify({ logger: true })
-        this.routes();
+
+        this.app = fastify({
+            logger: true,
+            ajv: {
+                customOptions: {
+                    removeAdditional: false
+                }
+            }
+        });
+
+        this.registerRoutes();
     }
 
+
+    private registerRoutes(): void {
+
+        this.app.register(estudoRoutes);
+
+        this.app.register(estudoPontoRoutes);
+
+        this.app.register(usuarioRoutes);
+
+        this.app.register(perfilRfRoutes);
+
+        this.app.register(criterioInstalacaoRoutes);
+
+        this.app.register(cenarioRoutes);
+
+        this.app.register(cenarioGatewayRoutes);
+
+        this.app.register(cenarioAtendimentoRoutes);
+    }
+
+
     async listen(port: number) {
+
         try {
-            await this.app.listen({ port: port, host: '0.0.0.0'});
-            console.log(`O servidor está rodando na porta ${port}`);
-        } catch (error: any) {
+
+            await this.app.listen({
+                port,
+                host: "0.0.0.0"
+            });
+
+            console.log(
+                `O servidor está rodando na porta ${port}`
+            );
+
+        } catch (error) {
+
             this.app.log.error(error);
+
             process.exit(1);
         }
     }
 
-    public getInstance() {
-        return this.app;
-    }
 
-    routes() {
-        // Escrever as rotas do API aqui
+    public getInstance(): FastifyInstance {
+
+        return this.app;
     }
 }
 
-export { App }
+
+export { App };
