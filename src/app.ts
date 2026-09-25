@@ -1,6 +1,6 @@
-import fastify, {
-    type FastifyInstance
-} from "fastify";
+import fastify, { type FastifyInstance } from "fastify";
+
+import cors from "@fastify/cors";
 
 import {
     estudoRoutes
@@ -33,16 +33,16 @@ import {
 import {
     cenarioAtendimentoRoutes
 } from "./routes/cenario-atendimento.routes.js";
+
 import { recomendacaoRoutes } from "./routes/recomendacao.routes.js";
 
+import { ativoRoutes } from "./modules/ativos/ativo.routes.js";
 
 class App {
 
     public app: FastifyInstance;
 
-
     constructor() {
-
         this.app = fastify({
             logger: true,
             ajv: {
@@ -52,12 +52,12 @@ class App {
             }
         });
 
+        void this.app.register(cors, { origin: true });
+
         this.registerRoutes();
     }
 
-
     private registerRoutes(): void {
-
         this.app.register(estudoRoutes);
 
         this.app.register(estudoPontoRoutes);
@@ -75,13 +75,12 @@ class App {
         this.app.register(cenarioAtendimentoRoutes);
 
         this.app.register(recomendacaoRoutes);
+
+        this.app.register(ativoRoutes);
     }
 
-
     async listen(port: number) {
-
         try {
-
             await this.app.listen({
                 port,
                 host: "0.0.0.0"
@@ -92,19 +91,15 @@ class App {
             );
 
         } catch (error) {
-
             this.app.log.error(error);
 
             process.exit(1);
         }
     }
 
-
     public getInstance(): FastifyInstance {
-
         return this.app;
     }
 }
-
 
 export { App };
