@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { CriterioInstalacao, CriarCriterioInstalacao } from "../models/criterio-instalacao.js";
-import { criarCriterioInstalacao } from "../services/criterio-instalacao.service.js";
+import { criarCriterioInstalacaoController } from "../controllers/criterio-instalacao.controller.js";
 import { registrarRotasCrud } from "./crud.routes.js";
 
 export async function criterioInstalacaoRoutes(fastify: FastifyInstance) {
@@ -40,15 +40,6 @@ export async function criterioInstalacaoRoutes(fastify: FastifyInstance) {
                 }
             }
         },
-        async (request, reply) => {
-            try {
-                const criterio = await criarCriterioInstalacao(request.body);
-                return reply.status(201).send({ mensagem: "Critério de instalação criado com sucesso", criterio });
-            } catch (error) {
-                const mensagem = error instanceof Error ? error.message : "Erro desconhecido ao criar critério de instalação";
-                fastify.log.error(error);
-                return reply.status(400).send({ erro: mensagem });
-            }
-        }
+        criarCriterioInstalacaoController
     );
 }

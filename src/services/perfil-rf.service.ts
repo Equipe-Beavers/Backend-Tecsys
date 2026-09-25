@@ -4,26 +4,13 @@ import type {
     CriarPerfilRf,
     PerfilRf
 } from "../models/perfil-rf.js";
+import { verificarRegistro } from "./validacao.service.js";
 
 export async function criarPerfilRf(
     dados: CriarPerfilRf
 ): Promise<PerfilRf> {
 
-    const { data: usuario, error: erroUsuario } = await supabase
-        .from("usuarios")
-        .select("id_usuario")
-        .eq("id_usuario", dados.id_usuario)
-        .maybeSingle();
-
-    if (erroUsuario) {
-        throw new Error(
-            `Erro ao consultar usuário: ${erroUsuario.message}`
-        );
-    }
-
-    if (!usuario) {
-        throw new Error("Usuário não encontrado");
-    }
+    await verificarRegistro("usuarios", "id_usuario", dados.id_usuario, "Usuário");
 
     const perfil = {
         id_usuario: dados.id_usuario,

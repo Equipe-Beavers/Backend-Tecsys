@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { Cenario, CriarCenario } from "../models/cenario.js";
-import { criarCenario } from "../services/cenario.service.js";
+import { criarCenarioController } from "../controllers/cenario.controller.js";
 import { registrarRotasCrud } from "./crud.routes.js";
 
 export async function cenarioRoutes(fastify: FastifyInstance) {
@@ -43,15 +43,6 @@ export async function cenarioRoutes(fastify: FastifyInstance) {
                 }
             }
         },
-        async (request, reply) => {
-            try {
-                const cenario = await criarCenario(request.body);
-                return reply.status(201).send({ mensagem: "Cenário criado com sucesso", cenario });
-            } catch (error) {
-                const mensagem = error instanceof Error ? error.message : "Erro desconhecido ao criar cenário";
-                fastify.log.error(error);
-                return reply.status(400).send({ erro: mensagem });
-            }
-        }
+        criarCenarioController
     );
 }

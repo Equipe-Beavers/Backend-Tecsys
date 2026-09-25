@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { CenarioAtendimento, CriarCenarioAtendimento } from "../models/cenario-atendimento.js";
-import { criarCenarioAtendimento } from "../services/cenario-atendimento.service.js";
+import { criarCenarioAtendimentoController } from "../controllers/cenario-atendimento.controller.js";
 import { registrarRotasCrud } from "./crud.routes.js";
 
 export async function cenarioAtendimentoRoutes(fastify: FastifyInstance) {
@@ -30,15 +30,6 @@ export async function cenarioAtendimentoRoutes(fastify: FastifyInstance) {
                 }
             }
         },
-        async (request, reply) => {
-            try {
-                const atendimento = await criarCenarioAtendimento(request.body);
-                return reply.status(201).send({ mensagem: "Atendimento do cenário criado com sucesso", atendimento });
-            } catch (error) {
-                const mensagem = error instanceof Error ? error.message : "Erro desconhecido ao criar atendimento do cenário";
-                fastify.log.error(error);
-                return reply.status(400).send({ erro: mensagem });
-            }
-        }
+        criarCenarioAtendimentoController
     );
 }

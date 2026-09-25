@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { CriarUsuario, Usuario } from "../models/usuario.js";
-import { criarUsuario } from "../services/usuario.service.js";
+import { criarUsuarioController } from "../controllers/usuario.controller.js";
 import { registrarRotasCrud } from "./crud.routes.js";
 
 export async function usuarioRoutes(fastify: FastifyInstance) {
@@ -29,20 +29,6 @@ export async function usuarioRoutes(fastify: FastifyInstance) {
                 }
             }
         },
-        async (request, reply) => {
-            try {
-                const usuario = await criarUsuario(request.body);
-                return reply.status(201).send({
-                    mensagem: "Usuário criado com sucesso",
-                    usuario
-                });
-            } catch (error) {
-                const mensagem = error instanceof Error
-                    ? error.message
-                    : "Erro desconhecido ao criar usuário";
-                fastify.log.error(error);
-                return reply.status(400).send({ erro: mensagem });
-            }
-        }
+        criarUsuarioController
     );
 }

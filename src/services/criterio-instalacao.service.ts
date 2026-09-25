@@ -4,26 +4,13 @@ import type {
     CriterioInstalacao,
     CriarCriterioInstalacao
 } from "../models/criterio-instalacao.js";
+import { verificarRegistro } from "./validacao.service.js";
 
 export async function criarCriterioInstalacao(
     dados: CriarCriterioInstalacao
 ): Promise<CriterioInstalacao> {
 
-    const { data: usuario, error: erroUsuario } = await supabase
-        .from("usuarios")
-        .select("id_usuario")
-        .eq("id_usuario", dados.id_usuario)
-        .maybeSingle();
-
-    if (erroUsuario) {
-        throw new Error(
-            `Erro ao consultar usuário: ${erroUsuario.message}`
-        );
-    }
-
-    if (!usuario) {
-        throw new Error("Usuário não encontrado");
-    }
+    await verificarRegistro("usuarios", "id_usuario", dados.id_usuario, "Usuário");
 
     const criterio = {
         id_usuario: dados.id_usuario,

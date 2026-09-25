@@ -4,42 +4,19 @@ import type {
     CenarioGateway,
     CriarCenarioGateway
 } from "../models/cenario-gateway.js";
+import { verificarRegistro } from "./validacao.service.js";
 
 export async function criarCenarioGateway(
     dados: CriarCenarioGateway
 ): Promise<CenarioGateway> {
 
-    const { data: cenario, error: erroCenario } = await supabase
-        .from("cenarios")
-        .select("id_cenario")
-        .eq("id_cenario", dados.id_cenario)
-        .maybeSingle();
-
-    if (erroCenario) {
-        throw new Error(
-            `Erro ao consultar cenário: ${erroCenario.message}`
-        );
-    }
-
-    if (!cenario) {
-        throw new Error("Cenário não encontrado");
-    }
-
-    const { data: ponto, error: erroPonto } = await supabase
-        .from("estudo_pontos")
-        .select("id_estudo_ponto")
-        .eq("id_estudo_ponto", dados.id_estudo_ponto)
-        .maybeSingle();
-
-    if (erroPonto) {
-        throw new Error(
-            `Erro ao consultar ponto do estudo: ${erroPonto.message}`
-        );
-    }
-
-    if (!ponto) {
-        throw new Error("Ponto do estudo não encontrado");
-    }
+    await verificarRegistro("cenarios", "id_cenario", dados.id_cenario, "Cenário");
+    await verificarRegistro(
+        "estudo_pontos",
+        "id_estudo_ponto",
+        dados.id_estudo_ponto,
+        "Ponto do estudo"
+    );
 
     const gateway = {
         id_cenario: dados.id_cenario,

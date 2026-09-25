@@ -5,9 +5,7 @@ import type {
     EstudoPonto
 } from "../models/estudo-ponto.js";
 
-import {
-    criarEstudoPonto
-} from "../services/estudo-ponto.service.js";
+import { criarEstudoPontoController } from "../controllers/estudo-ponto.controller.js";
 
 import {
     registrarRotasCrud
@@ -26,10 +24,24 @@ export async function estudoPontoRoutes(
         chaveResposta: "pontos"
     });
 
-    fastify.post<{ Body: CriarEstudoPonto }>(
+    fastify.post<{
+        Params: { id: number };
+        Body: CriarEstudoPonto;
+    }>(
         "/estudos/:id/pontos",
         {
             schema: {
+                params: {
+                    type: "object",
+                    required: ["id"],
+                    additionalProperties: false,
+                    properties: {
+                        id: {
+                            type: "integer",
+                            minimum: 1
+                        }
+                    }
+                },
                 body: {
                     type: "object",
 
@@ -146,38 +158,6 @@ export async function estudoPontoRoutes(
                 }
             }
         },
-
-        async (request, reply) => {
-
-            try {
-
-                const ponto = await criarEstudoPonto(
-                    request.body
-                );
-
-                return reply
-                    .status(201)
-                    .send({
-                        mensagem:
-                            "Ponto adicionado ao estudo com sucesso",
-                        ponto
-                    });
-
-            } catch (error) {
-
-                const mensagem =
-                    error instanceof Error
-                        ? error.message
-                        : "Erro desconhecido ao criar ponto";
-
-                fastify.log.error(error);
-
-                return reply
-                    .status(400)
-                    .send({
-                        erro: mensagem
-                    });
-            }
-        }
+        criarEstudoPontoController
     );
 }

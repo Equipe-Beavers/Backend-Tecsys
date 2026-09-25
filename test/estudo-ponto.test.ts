@@ -41,4 +41,26 @@ describe("POST /estudos/:id/pontos", () => {
         expect(response.statusCode).toBe(400);
         await app.close();
     });
+
+    it("rejeita estudo diferente entre a URL e o corpo", async () => {
+        const app = createTestApp();
+
+        const response = await app.inject({
+            method: "POST",
+            url: "/estudos/1/pontos",
+            payload: {
+                id_estudo: 2,
+                origem: "manual",
+                papel: "interesse",
+                latitude: 0,
+                longitude: 0
+            }
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json().erro).toBe(
+            "O estudo da URL deve ser igual ao estudo informado no corpo"
+        );
+        await app.close();
+    });
 });

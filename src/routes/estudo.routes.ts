@@ -5,9 +5,7 @@ import type {
     Estudo
 } from "../models/estudo.js";
 
-import {
-    criarEstudo
-} from "../services/estudo.service.js";
+import { criarEstudoController } from "../controllers/estudo.controller.js";
 
 import {
     registrarRotasCrud
@@ -219,38 +217,6 @@ export async function estudoRoutes(
                 }
             }
         },
-
-        async (request, reply) => {
-
-            try {
-
-                const estudo = await criarEstudo(
-                    request.body
-                );
-
-                return reply
-                    .status(201)
-                    .send({
-                        mensagem:
-                            "Estudo criado com sucesso",
-                        estudo
-                    });
-
-            } catch (error) {
-
-                const mensagem =
-                    error instanceof Error
-                        ? error.message
-                        : "Erro desconhecido ao criar estudo";
-
-                fastify.log.error(error);
-
-                return reply
-                    .status(400)
-                    .send({
-                        erro: mensagem
-                    });
-            }
-        }
+        criarEstudoController
     );
 }

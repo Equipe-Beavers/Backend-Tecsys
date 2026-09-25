@@ -4,26 +4,13 @@ import type {
     CriarEstudoPonto,
     EstudoPonto
 } from "../models/estudo-ponto.js";
+import { verificarRegistro } from "./validacao.service.js";
 
 export async function criarEstudoPonto(
     dados: CriarEstudoPonto
 ): Promise<EstudoPonto> {
 
-    const { data: estudo, error: erroEstudo } = await supabase
-        .from("estudos")
-        .select("id_estudo")
-        .eq("id_estudo", dados.id_estudo)
-        .maybeSingle();
-
-    if (erroEstudo) {
-        throw new Error(
-            `Erro ao consultar estudo: ${erroEstudo.message}`
-        );
-    }
-
-    if (!estudo) {
-        throw new Error("Estudo não encontrado");
-    }
+    await verificarRegistro("estudos", "id_estudo", dados.id_estudo, "Estudo");
 
     /*
      * GeoJSON utilizado pelo PostGIS/Supabase.

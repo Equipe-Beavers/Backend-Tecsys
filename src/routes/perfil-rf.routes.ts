@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { CriarPerfilRf, PerfilRf } from "../models/perfil-rf.js";
-import { criarPerfilRf } from "../services/perfil-rf.service.js";
+import { criarPerfilRfController } from "../controllers/perfil-rf.controller.js";
 import { registrarRotasCrud } from "./crud.routes.js";
 
 export async function perfilRfRoutes(fastify: FastifyInstance) {
@@ -49,15 +49,6 @@ export async function perfilRfRoutes(fastify: FastifyInstance) {
                 }
             }
         },
-        async (request, reply) => {
-            try {
-                const perfil = await criarPerfilRf(request.body);
-                return reply.status(201).send({ mensagem: "Perfil RF criado com sucesso", perfil });
-            } catch (error) {
-                const mensagem = error instanceof Error ? error.message : "Erro desconhecido ao criar perfil RF";
-                fastify.log.error(error);
-                return reply.status(400).send({ erro: mensagem });
-            }
-        }
+        criarPerfilRfController
     );
 }

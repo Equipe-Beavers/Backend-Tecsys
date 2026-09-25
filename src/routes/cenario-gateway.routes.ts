@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { CenarioGateway, CriarCenarioGateway } from "../models/cenario-gateway.js";
-import { criarCenarioGateway } from "../services/cenario-gateway.service.js";
+import { criarCenarioGatewayController } from "../controllers/cenario-gateway.controller.js";
 import { registrarRotasCrud } from "./crud.routes.js";
 
 export async function cenarioGatewayRoutes(fastify: FastifyInstance) {
@@ -34,15 +34,6 @@ export async function cenarioGatewayRoutes(fastify: FastifyInstance) {
                 }
             }
         },
-        async (request, reply) => {
-            try {
-                const gateway = await criarCenarioGateway(request.body);
-                return reply.status(201).send({ mensagem: "Gateway do cenário criado com sucesso", gateway });
-            } catch (error) {
-                const mensagem = error instanceof Error ? error.message : "Erro desconhecido ao criar gateway do cenário";
-                fastify.log.error(error);
-                return reply.status(400).send({ erro: mensagem });
-            }
-        }
+        criarCenarioGatewayController
     );
 }

@@ -1,15 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { gerarRecomendacao } from "../services/recomendacao/recomendacao.service.js";
-
-interface RecomendarParams {
-  id: number;
-}
-
-interface RecomendarBody {
-  id_perfil_rf: number;
-  id_criterio_instalacao?: number | null;
-  nome_cenario?: string;
-}
+import {
+  gerarRecomendacaoController,
+  type RecomendarBody,
+  type RecomendarParams
+} from "../controllers/recomendacao.controller.js";
 
 export async function recomendacaoRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: RecomendarParams; Body: RecomendarBody }>(
@@ -37,22 +31,6 @@ export async function recomendacaoRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    async (request, reply) => {
-      try {
-        const resultado = await gerarRecomendacao({
-          id_estudo: request.params.id,
-          id_perfil_rf: request.body.id_perfil_rf,
-          id_criterio_instalacao: request.body.id_criterio_instalacao ?? null,
-          nome_cenario: request.body.nome_cenario,
-        });
-
-        return reply.status(201).send(resultado);
-      } catch (error) {
-        const mensagem =
-          error instanceof Error ? error.message : "Erro desconhecido ao gerar recomendação";
-        fastify.log.error(error);
-        return reply.status(400).send({ erro: mensagem });
-      }
-    }
+    gerarRecomendacaoController
   );
 }
