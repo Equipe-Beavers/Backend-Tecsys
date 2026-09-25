@@ -33,6 +33,7 @@ import {
 import {
     cenarioAtendimentoRoutes
 } from "./routes/cenario-atendimento.routes.js";
+import { recomendacaoRoutes } from "./routes/recomendacao.routes.js";
 
 
 class App {
@@ -72,6 +73,8 @@ class App {
         this.app.register(cenarioGatewayRoutes);
 
         this.app.register(cenarioAtendimentoRoutes);
+
+        this.app.register(recomendacaoRoutes);
     }
 
 
