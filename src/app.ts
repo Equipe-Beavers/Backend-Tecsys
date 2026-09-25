@@ -1,9 +1,12 @@
 import fastify from "fastify"
+import cors from "@fastify/cors";
+import { ativoRoutes } from "./modules/ativos/ativo.routes.js";
 
 class App {
     public app: fastify.FastifyInstance;
     constructor() {
         this.app = fastify({ logger: true })
+        void this.app.register(cors, { origin: true });
         this.routes();
     }
 
@@ -22,7 +25,8 @@ class App {
     }
 
     routes() {
-        // Escrever as rotas do API aqui
+        this.app.get("/health", async () => ({ status: "ok" }));
+        void this.app.register(ativoRoutes);
     }
 }
 
