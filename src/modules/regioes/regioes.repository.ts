@@ -199,6 +199,60 @@ export class RegioesRepository {
     return this.municipios(params);
   }
 
+  async listarMunicipiosDaTabela(params: {
+    busca?: string;
+    limite: number;
+    pagina: number;
+  }): Promise<PaginatedResult<MunicipioDTO>> {
+    const values: unknown[] = [];
+    const conditions: string[] = [];
+
+    if (params.busca?.trim()) {
+      values.push(`%${params.busca.trim()}%`);
+      conditions.push(`nome ILIKE $${values.length}`);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const countResult = await pool.query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total FROM municipios ${where}`,
+      values,
+    );
+    const total = Number(countResult.rows[0]?.total ?? 0);
+    const inicio = (params.pagina - 1) * params.limite;
+    const dataValues = [...values, params.limite, inicio];
+
+    const result = await pool.query<{
+      nome: string;
+      uf: string | null;
+    }>(
+      `
+        SELECT nome, uf
+        FROM municipios
+        ${where}
+        ORDER BY nome
+        LIMIT $${dataValues.length - 1}
+        OFFSET $${dataValues.length}
+      `,
+      dataValues,
+    );
+
+    return {
+      dados: result.rows.map((row) => ({
+        nome: row.nome,
+        uf: row.uf,
+        totalAtivos: 0,
+        lat: null,
+        lng: null,
+      })),
+      paginacao: {
+        pagina: params.pagina,
+        limite: params.limite,
+        total,
+        totalPaginas: Math.ceil(total / params.limite),
+      },
+    };
+  }
+
   async buscarMunicipiosGlobal(params: {
     busca: string;
     limite: number;

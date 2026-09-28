@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { RegioesRepository, type BoundingBox } from "./regioes.repository.js";
 
 const LIMITE_PADRAO = 20;
-const LIMITE_MAXIMO = 100;
+const LIMITE_MAXIMO = 6000;
 
 function numero(query: string | undefined): number | undefined {
     if (query === undefined || query.trim() === "") return undefined;
@@ -67,12 +67,12 @@ export async function regioesRoutes(app: FastifyInstance): Promise<void> {
 
 
         if (!distribuidoraId) {
-            if (!busca?.trim()) {
-                return reply
-                    .status(400)
-                    .send({ erro: "Informe distribuidoraId ou um termo de busca." });
+            if (bbox) {
+                const resultado = await repo.buscarMunicipiosGlobal({ busca: busca ?? '', limite, pagina, bbox });
+                return respostaPaginada ? resultado : resultado.dados;
             }
-            const resultado = await repo.buscarMunicipiosGlobal({ busca, limite, pagina, bbox });
+
+            const resultado = await repo.listarMunicipiosDaTabela({ busca, limite, pagina });
             return respostaPaginada ? resultado : resultado.dados;
         }
 
