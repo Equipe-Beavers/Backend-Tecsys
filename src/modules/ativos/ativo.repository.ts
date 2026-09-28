@@ -24,6 +24,8 @@ export interface AssetFilters {
     types?: AssetType[];
     deviceTypeIds?: number[];
     distributors?: Distributor[];
+    municipio?: string;
+    bairro?: string;
     limit?: number;
 }
 
@@ -195,12 +197,31 @@ export async function findAssets(filters: AssetFilters): Promise<AssetsPage> {
     ];
     let distributorCondition = "";
     let keyConditions = "";
+    let rawConditions = "";
+    let municipioJoin = "";
 
     if (filters.distributors && filters.distributors.length > 0) {
         values.push(filters.distributors);
         const param = `$${values.length}`;
         distributorCondition = ` AND distribuidora = ANY(${param}::text[])`;
         conditions.push(`distribuidora = ANY(${param}::text[])`);
+    }
+
+    const municipio = filters.municipio?.trim();
+    if (municipio) {
+        values.push(municipio);
+        const param = `$${values.length}`;
+        municipioJoin = "\n                LEFT JOIN municipios_ibge m ON m.codigo = a.municipio";
+        rawConditions += ` AND COALESCE(m.nome, a.municipio) = ${param}`;
+        conditions.push(`municipio = ${param}`);
+    }
+
+    const bairro = filters.bairro?.trim();
+    if (bairro) {
+        values.push(bairro);
+        const param = `$${values.length}`;
+        rawConditions += ` AND a.bairro = ${param}`;
+        conditions.push(`bairro = ${param}`);
     }
 
     if (filters.types && filters.types.length > 0) {
@@ -251,10 +272,10 @@ export async function findAssets(filters: AssetFilters): Promise<AssetsPage> {
                         a.id_ativo,
                         a.tipo_ativo,
                         ${tipUnidExpression("a")} AS tip_id
-                    FROM ativos_rede a
+                    FROM ativos_rede a${municipioJoin}
                     WHERE a.registro_atual = TRUE
                       AND a.latitude BETWEEN $1 AND $2
-                      AND a.longitude BETWEEN $3 AND $4${distributorCondition}
+                      AND a.longitude BETWEEN $3 AND $4${distributorCondition}${rawConditions}
                 ) raw
             ) typed
             WHERE TRUE${keyConditions}
@@ -262,14 +283,13 @@ export async function findAssets(filters: AssetFilters): Promise<AssetsPage> {
         tops AS (
             ${branches.join("\n            UNION ALL\n            ")}
         )
-        SELECT pagina.*, totals.total FROM (
+        SELECT pagina.*, (SELECT COUNT(*)::int FROM keys) AS total FROM (
             ${assetSelect}
             WHERE ${conditions.join(" AND ")}
               AND id_ativo IN (SELECT id_ativo FROM tops)
             ORDER BY tipo, id
             LIMIT ${limitParam}
         ) pagina
-        CROSS JOIN (SELECT COUNT(*)::int AS total FROM keys) totals
     `;
 
     const result = await pool.query<AssetRow>(sql, values);

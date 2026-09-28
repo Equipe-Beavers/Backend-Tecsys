@@ -1,5 +1,21 @@
 import { supabase } from "../lib/supabase.js";
 
+const CAMPOS_SENSIVEIS = ["senha_hash"];
+
+function ocultarCamposSensiveis<T>(registro: unknown): T {
+    if (!registro || typeof registro !== "object") {
+        return registro as T;
+    }
+
+    const copia: Record<string, unknown> = { ...(registro as Record<string, unknown>) };
+
+    for (const campo of CAMPOS_SENSIVEIS) {
+        delete copia[campo];
+    }
+
+    return copia as T;
+}
+
 export async function listarRegistros<T>(
     tabela: string
 ): Promise<T[]> {
@@ -11,7 +27,9 @@ export async function listarRegistros<T>(
         throw new Error(`Erro ao listar registros: ${error.message}`);
     }
 
-    return (data ?? []) as T[];
+    return ((data ?? []) as unknown[]).map((registro) =>
+        ocultarCamposSensiveis<T>(registro)
+    );
 }
 
 export async function buscarRegistroPorId<T>(
@@ -34,7 +52,7 @@ export async function buscarRegistroPorId<T>(
         throw new Error(`${entidade} não encontrado`);
     }
 
-    return data as T;
+    return ocultarCamposSensiveis<T>(data);
 }
 
 export async function atualizarRegistro<T>(
@@ -59,7 +77,7 @@ export async function atualizarRegistro<T>(
         throw new Error(`${entidade} não encontrado`);
     }
 
-    return data as T;
+    return ocultarCamposSensiveis<T>(data);
 }
 
 export async function excluirRegistro(

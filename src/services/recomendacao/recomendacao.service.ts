@@ -91,6 +91,26 @@ export async function gerarRecomendacao(input: GerarRecomendacaoInput) {
     }
   }
 
+  const naoCobertosPorTipo = new Map<string, number>();
+  for (const ponto of resultado.pontosNaoCobertos) {
+    const tipo = ponto.tipo_ativo ?? "desconhecido";
+    naoCobertosPorTipo.set(tipo, (naoCobertosPorTipo.get(tipo) ?? 0) + 1);
+  }
+
+  const totaisPorTipo = new Map<string, number>();
+  for (const ponto of pontosInteresse) {
+    const tipo = ponto.tipo_ativo ?? "desconhecido";
+    totaisPorTipo.set(tipo, (totaisPorTipo.get(tipo) ?? 0) + 1);
+  }
+
+  const porCategoria = [...totaisPorTipo.entries()]
+    .map(([tipo, total]) => ({
+      tipo_ativo: tipo,
+      total,
+      nao_cobertos: naoCobertosPorTipo.get(tipo) ?? 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
   return {
     id_cenario: cenario.id_cenario,
     quantidade_gateways: resultado.gateways.length,
@@ -99,12 +119,15 @@ export async function gerarRecomendacao(input: GerarRecomendacaoInput) {
     pontos_interesse: totalInteresse,
     pontos_cobertos: totalCobertos,
     pontos_nao_cobertos: resultado.pontosNaoCobertos.length,
+    por_categoria: porCategoria,
     gateways: resultado.gateways.map((gw) => ({
       id_estudo_ponto: gw.candidato.id_estudo_ponto,
+      id_ativo_bdgd: gw.candidato.id_ativo_bdgd,
       rotulo: gw.candidato.rotulo,
       latitude: gw.candidato.latitude,
       longitude: gw.candidato.longitude,
       quantidade_atendidos: gw.atendimentos.length,
+      atributos: gw.candidato.atributos ?? {},
       atendidos: gw.atendimentos.map((a) => ({
         id_estudo_ponto: a.ponto.id_estudo_ponto,
         tipo_ativo: a.ponto.tipo_ativo,

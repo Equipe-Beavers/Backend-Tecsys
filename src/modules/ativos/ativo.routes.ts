@@ -15,6 +15,8 @@ interface ListQuery {
     maxLongitude?: string;
     tipos?: string;
     distribuidoras?: string;
+    municipio?: string;
+    bairro?: string;
     limit?: string;
     tiposDispositivos?: string;
 }
@@ -117,6 +119,8 @@ export async function ativoRoutes(app: FastifyInstance): Promise<void> {
                 types: parseTypes(request.query.tipos),
                 deviceTypeIds: parseDeviceTypeIds(request.query.tiposDispositivos),
                 distributors: parseDistributors(request.query.distribuidoras),
+                municipio: request.query.municipio,
+                bairro: request.query.bairro,
                 limit: parseLimit(request.query.limit),
             });
             return reply.send({ data: items, total });

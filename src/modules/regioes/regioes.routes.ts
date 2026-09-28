@@ -35,6 +35,33 @@ function boundingBox(query: {
 export async function regioesRoutes(app: FastifyInstance): Promise<void> {
     const repo = new RegioesRepository();
 
+    /**
+     * Resolve `distribuidora` (nome) ou `distribuidoraId` para o nome usado
+     * nas tabelas locais. Sem isso a consulta voltaria os municípios de
+     * todas as distribuidoras.
+     */
+    async function resolverDistribuidora(
+        distribuidora?: string,
+        distribuidoraId?: string,
+    ): Promise<{ nome?: string; erro?: { status: number; mensagem: string } }> {
+        const nomeInformado = distribuidora?.trim();
+        if (nomeInformado) return { nome: nomeInformado };
+
+        if (distribuidoraId === undefined) return {};
+
+        const id = Number(distribuidoraId);
+        if (!Number.isInteger(id)) {
+            return { erro: { status: 400, mensagem: "distribuidoraId inválido." } };
+        }
+
+        const nome = await repo.nomeDaDistribuidora(id);
+        if (!nome) {
+            return { erro: { status: 404, mensagem: `Distribuidora ${id} não encontrada.` } };
+        }
+
+        return { nome };
+    }
+
     // GET /api/distribuidoras
     app.get<{ Querystring: { busca?: string } }>("/distribuidoras", async (req) => {
         return repo.listarDistribuidoras(req.query.busca);
@@ -48,11 +75,11 @@ export async function regioesRoutes(app: FastifyInstance): Promise<void> {
     // GET /api/municipios
     app.get<{
         Querystring: {
-            distribuidoraId?: string; busca?: string; limite?: string; pagina?: string;
+            distribuidora?: string; distribuidoraId?: string; busca?: string; limite?: string; pagina?: string;
             minLat?: string; maxLat?: string; minLng?: string; maxLng?: string;
         };
     }>("/municipios", async (req, reply) => {
-        const { distribuidoraId, busca } = req.query;
+        const { distribuidora, distribuidoraId, busca } = req.query;
         const limite = Math.min(
             Math.max(Number(req.query.limite) || LIMITE_PADRAO, 1),
             LIMITE_MAXIMO,
@@ -65,29 +92,35 @@ export async function regioesRoutes(app: FastifyInstance): Promise<void> {
             return reply.status(400).send({ erro: "Bounding box inválido. Informe minLat, maxLat, minLng e maxLng válidos." });
         }
 
+        const resolucao = await resolverDistribuidora(distribuidora, distribuidoraId);
+        if (resolucao.erro) {
+            return reply.status(resolucao.erro.status).send({ erro: resolucao.erro.mensagem });
+        }
 
-        if (!distribuidoraId) {
+        if (!resolucao.nome) {
             if (!busca?.trim()) {
                 return reply
                     .status(400)
-                    .send({ erro: "Informe distribuidoraId ou um termo de busca." });
+                    .send({ erro: "Informe distribuidora, distribuidoraId ou um termo de busca." });
             }
             const resultado = await repo.buscarMunicipiosGlobal({ busca, limite, pagina, bbox });
             return respostaPaginada ? resultado : resultado.dados;
         }
 
-        const id = Number(distribuidoraId);
-        if (!Number.isInteger(id)) {
-            return reply.status(400).send({ erro: "distribuidoraId inválido." });
-        }
-
-        const resultado = await repo.listarMunicipios({ distribuidoraId: id, busca, limite, pagina, bbox });
+        const resultado = await repo.listarMunicipios({
+            distribuidora: resolucao.nome,
+            busca,
+            limite,
+            pagina,
+            bbox,
+        });
         return respostaPaginada ? resultado : resultado.dados;
     });
 
     // GET /api/bairros
     app.get<{
         Querystring: {
+            distribuidora?: string;
             distribuidoraId?: string;
             municipio?: string;
             busca?: string;
@@ -95,7 +128,7 @@ export async function regioesRoutes(app: FastifyInstance): Promise<void> {
             pagina?: string;
         };
     }>('/bairros', async (req, reply) => {
-        const { distribuidoraId, municipio, busca } = req.query;
+        const { distribuidora, distribuidoraId, municipio, busca } = req.query;
         const limite = Math.min(
             Math.max(Number(req.query.limite) || LIMITE_PADRAO, 1),
             LIMITE_MAXIMO,
@@ -103,15 +136,18 @@ export async function regioesRoutes(app: FastifyInstance): Promise<void> {
         const pagina = paginaEValida(req.query.pagina);
         const respostaPaginada = req.query.pagina !== undefined;
 
-        let id: number | undefined;
-        if (distribuidoraId !== undefined) {
-            id = Number(distribuidoraId);
-            if (!Number.isInteger(id)) {
-                return reply.status(400).send({ erro: 'distribuidoraId inválido.' });
-            }
+        const resolucao = await resolverDistribuidora(distribuidora, distribuidoraId);
+        if (resolucao.erro) {
+            return reply.status(resolucao.erro.status).send({ erro: resolucao.erro.mensagem });
         }
 
-        const resultado = await repo.listarBairros({ distribuidoraId: id, municipio, busca, limite, pagina });
+        const resultado = await repo.listarBairros({
+            distribuidora: resolucao.nome,
+            municipio,
+            busca,
+            limite,
+            pagina,
+        });
         return respostaPaginada ? resultado : resultado.dados;
     });
 }
