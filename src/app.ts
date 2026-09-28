@@ -37,6 +37,7 @@ import {
 import { recomendacaoRoutes } from "./routes/recomendacao.routes.js";
 
 import { ativoRoutes } from "./modules/ativos/ativo.routes.js";
+import { regioesRoutes } from "./modules/regioes/regioes.routes.js";
 
 class App {
 
@@ -77,6 +78,8 @@ class App {
         this.app.register(recomendacaoRoutes);
 
         this.app.register(ativoRoutes);
+
+        this.app.register(regioesRoutes, { prefix: "/api" });
     }
 
     async listen(port: number) {
@@ -89,7 +92,6 @@ class App {
             console.log(
                 `O servidor está rodando na porta ${port}`
             );
-
         } catch (error) {
             this.app.log.error(error);
 
