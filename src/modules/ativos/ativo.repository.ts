@@ -122,8 +122,8 @@ const assetSelect = `
             a.distribuidora,
             a.atributos
         FROM ativos_rede a
-        LEFT JOIN municipios_ibge m
-          ON m.codigo = a.municipio
+        LEFT JOIN municipios m
+          ON m.codigo_ibge::text = a.municipio
         WHERE a.registro_atual = TRUE
     ),
     ativos AS (
@@ -211,7 +211,7 @@ export async function findAssets(filters: AssetFilters): Promise<AssetsPage> {
     if (municipio) {
         values.push(municipio);
         const param = `$${values.length}`;
-        municipioJoin = "\n                LEFT JOIN municipios_ibge m ON m.codigo = a.municipio";
+        municipioJoin = "\n                LEFT JOIN municipios m ON m.codigo_ibge::text = a.municipio";
         rawConditions += ` AND COALESCE(m.nome, a.municipio) = ${param}`;
         conditions.push(`municipio = ${param}`);
     }

@@ -75,9 +75,9 @@ function normalizarNome(valor: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-// Escapa curingas do LIKE para que o valor seja tratado como texto literal.
-function escaparLike(valor: string): string {
-  return valor.replace(/[\\%_]/g, (char) => `\\${char}`);
+// O ETL grava o nome da distribuidora em caixa alta; a igualdade permite usar o índice.
+function nomeDistribuidoraLocal(valor: string): string {
+  return valor.trim().toUpperCase();
 }
 
 interface DistribuidoraLocal {
@@ -114,8 +114,8 @@ export class RegioesRepository {
     ];
 
     if (params.distribuidora?.trim()) {
-      values.push(escaparLike(params.distribuidora.trim()));
-      conditions.push(`p.distribuidora ILIKE $${values.length}`);
+      values.push(nomeDistribuidoraLocal(params.distribuidora));
+      conditions.push(`p.distribuidora = $${values.length}`);
     }
 
     if (params.busca?.trim()) {
@@ -148,12 +148,12 @@ export class RegioesRepository {
       `
 	SELECT COUNT(*)::int AS total
 	FROM (
-		SELECT m.codigo
-		FROM posicoes_geograficas p
-		JOIN municipios_ibge m
-			ON m.codigo = p.municipio
+		SELECT m.codigo_ibge
+		FROM ativos_rede p
+		JOIN municipios m
+			ON m.codigo_ibge::text = p.municipio
 		WHERE ${where}
-		GROUP BY m.codigo
+		GROUP BY m.codigo_ibge
 	) AS agrupados
 	`,
       values,
@@ -177,14 +177,14 @@ export class RegioesRepository {
 	SELECT
 		m.nome,
 		m.uf,
-		COUNT(p.id_posicao)::int AS total_ativos,
+		COUNT(p.id_ativo)::int AS total_ativos,
 		AVG(p.latitude) AS lat,
 		AVG(p.longitude) AS lng
-	FROM posicoes_geograficas p
-	JOIN municipios_ibge m
-		ON m.codigo = p.municipio
+	FROM ativos_rede p
+	JOIN municipios m
+		ON m.codigo_ibge::text = p.municipio
 	WHERE ${where}
-	GROUP BY m.codigo, m.nome, m.uf
+	GROUP BY m.codigo_ibge, m.nome, m.uf
 	ORDER BY m.nome
 	LIMIT $${limiteParam}
 	OFFSET $${offsetParam}
@@ -341,11 +341,11 @@ export class RegioesRepository {
       `
 	SELECT
 		m.uf,
-		COUNT(DISTINCT m.codigo)::int AS total_municipios,
-		COUNT(p.id_posicao)::int AS total_ativos
-	FROM posicoes_geograficas p
-	JOIN municipios_ibge m
-		ON m.codigo = p.municipio
+		COUNT(DISTINCT m.codigo_ibge)::int AS total_municipios,
+		COUNT(p.id_ativo)::int AS total_ativos
+	FROM ativos_rede p
+	JOIN municipios m
+		ON m.codigo_ibge::text = p.municipio
 	WHERE p.registro_atual = TRUE
 	  AND p.municipio ~ '^[0-9]{7}$'
 	  ${filtro}
@@ -379,8 +379,8 @@ export class RegioesRepository {
     ];
 
     if (params.distribuidora?.trim()) {
-      values.push(escaparLike(params.distribuidora.trim()));
-      conditions.push(`p.distribuidora ILIKE $${values.length}`);
+      values.push(nomeDistribuidoraLocal(params.distribuidora));
+      conditions.push(`p.distribuidora = $${values.length}`);
     }
 
     if (params.municipio?.trim()) {
@@ -399,12 +399,12 @@ export class RegioesRepository {
       `
 	SELECT COUNT(*)::int AS total
 	FROM (
-		SELECT p.bairro, m.codigo
-		FROM posicoes_geograficas p
-		JOIN municipios_ibge m
-			ON m.codigo = p.municipio
+		SELECT p.bairro, m.codigo_ibge
+		FROM ativos_rede p
+		JOIN municipios m
+			ON m.codigo_ibge::text = p.municipio
 		WHERE ${where}
-		GROUP BY p.bairro, m.codigo
+		GROUP BY p.bairro, m.codigo_ibge
 	) AS agrupados
 	`,
       values,
@@ -428,10 +428,10 @@ export class RegioesRepository {
 		p.bairro AS nome,
 		m.uf,
 		m.nome AS municipio,
-		COUNT(p.id_posicao)::int AS total_ativos
-	FROM posicoes_geograficas p
-	JOIN municipios_ibge m
-		ON m.codigo = p.municipio
+		COUNT(p.id_ativo)::int AS total_ativos
+	FROM ativos_rede p
+	JOIN municipios m
+		ON m.codigo_ibge::text = p.municipio
 	WHERE ${where}
 	GROUP BY p.bairro, m.uf, m.nome
 	ORDER BY p.bairro
