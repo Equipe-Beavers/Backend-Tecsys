@@ -25,7 +25,6 @@ export interface AssetFilters {
     deviceTypeIds?: number[];
     distributors?: Distributor[];
     municipio?: string;
-    bairro?: string;
     limit?: number;
 }
 
@@ -36,7 +35,6 @@ export interface Asset {
     latitude: number;
     longitude: number;
     municipio: string | null;
-    bairro: string | null;
     distribuidora: string | null;
     tipoDispositivoId: number | null;
     tipoDispositivoNome: string | null;
@@ -69,7 +67,6 @@ interface AssetRow extends QueryResultRow {
     latitude: number;
     longitude: number;
     municipio: string | null;
-    bairro: string | null;
     distribuidora: string | null;
     tipo_dispositivo_id: number | null;
     tipo_dispositivo_nome: string | null;
@@ -118,12 +115,11 @@ const assetSelect = `
             a.latitude,
             a.longitude,
             COALESCE(m.nome, a.municipio) AS municipio,
-            a.bairro,
             a.distribuidora,
             a.atributos
         FROM ativos_rede a
-        LEFT JOIN municipios m
-          ON m.codigo_ibge::text = a.municipio
+        LEFT JOIN municipios_ibge m
+          ON m.codigo = a.municipio
         WHERE a.registro_atual = TRUE
     ),
     ativos AS (
@@ -135,7 +131,6 @@ const assetSelect = `
             b.latitude,
             b.longitude,
             b.municipio,
-            b.bairro,
             b.distribuidora,
             b.tip_id AS tipo_dispositivo_id,
             td.nome_dispositivo AS tipo_dispositivo_nome,
@@ -158,7 +153,6 @@ const assetSelect = `
         latitude,
         longitude,
         municipio,
-        bairro,
         distribuidora,
         tipo_dispositivo_id,
         tipo_dispositivo_nome,
@@ -175,7 +169,6 @@ function mapRow(row: AssetRow): Asset {
         latitude: Number(row.latitude),
         longitude: Number(row.longitude),
         municipio: row.municipio,
-        bairro: row.bairro,
         distribuidora: row.distribuidora,
         tipoDispositivoId: row.tipo_dispositivo_id,
         tipoDispositivoNome: row.tipo_dispositivo_nome,
@@ -211,17 +204,9 @@ export async function findAssets(filters: AssetFilters): Promise<AssetsPage> {
     if (municipio) {
         values.push(municipio);
         const param = `$${values.length}`;
-        municipioJoin = "\n                LEFT JOIN municipios m ON m.codigo_ibge::text = a.municipio";
+        municipioJoin = "\n                LEFT JOIN municipios_ibge m ON m.codigo = a.municipio";
         rawConditions += ` AND COALESCE(m.nome, a.municipio) = ${param}`;
         conditions.push(`municipio = ${param}`);
-    }
-
-    const bairro = filters.bairro?.trim();
-    if (bairro) {
-        values.push(bairro);
-        const param = `$${values.length}`;
-        rawConditions += ` AND a.bairro = ${param}`;
-        conditions.push(`bairro = ${param}`);
     }
 
     if (filters.types && filters.types.length > 0) {

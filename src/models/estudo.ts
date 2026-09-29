@@ -29,7 +29,6 @@ export interface Estudo {
 
     uf: string | null;
     municipio: string | null;
-    bairro: string | null;
 
     geom: unknown | null;
 
@@ -55,7 +54,6 @@ export interface CriarEstudo {
 
     uf?: string | null;
     municipio?: string | null;
-    bairro?: string | null;
 
     geom?: unknown | null;
 

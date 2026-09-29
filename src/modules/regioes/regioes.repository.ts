@@ -25,13 +25,6 @@ export interface EstadoDTO {
   totalAtivos: number;
 }
 
-export interface BairroDTO {
-  nome: string;
-  uf: string | null;
-  municipio: string | null;
-  totalAtivos: number;
-}
-
 export interface BoundingBox {
   minLat: number;
   maxLat: number;
@@ -75,9 +68,11 @@ function normalizarNome(valor: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-// O ETL grava o nome da distribuidora em caixa alta; a igualdade permite usar o índice.
-function nomeDistribuidoraLocal(valor: string): string {
-  return valor.trim().toUpperCase();
+// O ETL grava "Enel SP" / "EDP SP" (caixa mista), mas o Supabase devolve
+// "ENEL SP", que e o valor recebido quando a busca e por distribuidoraId.
+// Por isso a comparacao de distribuidora e case-insensitive.
+function escaparLike(valor: string): string {
+  return valor.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
 interface DistribuidoraLocal {
@@ -114,8 +109,8 @@ export class RegioesRepository {
     ];
 
     if (params.distribuidora?.trim()) {
-      values.push(nomeDistribuidoraLocal(params.distribuidora));
-      conditions.push(`p.distribuidora = $${values.length}`);
+      values.push(escaparLike(params.distribuidora.trim()));
+      conditions.push(`p.distribuidora ILIKE $${values.length}`);
     }
 
     if (params.busca?.trim()) {
@@ -148,12 +143,12 @@ export class RegioesRepository {
       `
 	SELECT COUNT(*)::int AS total
 	FROM (
-		SELECT m.codigo_ibge
+		SELECT m.codigo
 		FROM ativos_rede p
-		JOIN municipios m
-			ON m.codigo_ibge::text = p.municipio
+		JOIN municipios_ibge m
+			ON m.codigo = p.municipio
 		WHERE ${where}
-		GROUP BY m.codigo_ibge
+		GROUP BY m.codigo
 	) AS agrupados
 	`,
       values,
@@ -181,10 +176,10 @@ export class RegioesRepository {
 		AVG(p.latitude) AS lat,
 		AVG(p.longitude) AS lng
 	FROM ativos_rede p
-	JOIN municipios m
-		ON m.codigo_ibge::text = p.municipio
+	JOIN municipios_ibge m
+		ON m.codigo = p.municipio
 	WHERE ${where}
-	GROUP BY m.codigo_ibge, m.nome, m.uf
+	GROUP BY m.codigo, m.nome, m.uf
 	ORDER BY m.nome
 	LIMIT $${limiteParam}
 	OFFSET $${offsetParam}
@@ -341,11 +336,11 @@ export class RegioesRepository {
       `
 	SELECT
 		m.uf,
-		COUNT(DISTINCT m.codigo_ibge)::int AS total_municipios,
+		COUNT(DISTINCT m.codigo)::int AS total_municipios,
 		COUNT(p.id_ativo)::int AS total_ativos
 	FROM ativos_rede p
-	JOIN municipios m
-		ON m.codigo_ibge::text = p.municipio
+	JOIN municipios_ibge m
+		ON m.codigo = p.municipio
 	WHERE p.registro_atual = TRUE
 	  AND p.municipio ~ '^[0-9]{7}$'
 	  ${filtro}
@@ -360,102 +355,5 @@ export class RegioesRepository {
       totalMunicipios: Number(row.total_municipios),
       totalAtivos: Number(row.total_ativos),
     }));
-  }
-
-
-  async listarBairros(params: {
-    distribuidora?: string;
-    municipio?: string;
-    busca?: string;
-    limite: number;
-    pagina: number;
-  }): Promise<PaginatedResult<BairroDTO>> {
-    const values: unknown[] = [];
-    const conditions = [
-      "p.registro_atual = TRUE",
-      "p.bairro IS NOT NULL",
-      "p.bairro <> ''",
-      "p.municipio ~ '^[0-9]{7}$'",
-    ];
-
-    if (params.distribuidora?.trim()) {
-      values.push(nomeDistribuidoraLocal(params.distribuidora));
-      conditions.push(`p.distribuidora = $${values.length}`);
-    }
-
-    if (params.municipio?.trim()) {
-      values.push(params.municipio.trim());
-      conditions.push(`m.nome ILIKE $${values.length}`);
-    }
-
-    if (params.busca?.trim()) {
-      values.push(`%${params.busca.trim()}%`);
-      conditions.push(`p.bairro ILIKE $${values.length}`);
-    }
-
-    const where = conditions.join(" AND ");
-
-    const countResult = await pool.query<{ total: number }>(
-      `
-	SELECT COUNT(*)::int AS total
-	FROM (
-		SELECT p.bairro, m.codigo_ibge
-		FROM ativos_rede p
-		JOIN municipios m
-			ON m.codigo_ibge::text = p.municipio
-		WHERE ${where}
-		GROUP BY p.bairro, m.codigo_ibge
-	) AS agrupados
-	`,
-      values,
-    );
-
-    const total = Number(countResult.rows[0]?.total ?? 0);
-    const inicio = (params.pagina - 1) * params.limite;
-
-    const dataValues = [...values, params.limite, inicio];
-    const limiteParam = dataValues.length - 1;
-    const offsetParam = dataValues.length;
-
-    const result = await pool.query<{
-      nome: string;
-      uf: string | null;
-      municipio: string;
-      total_ativos: number;
-    }>(
-      `
-	SELECT
-		p.bairro AS nome,
-		m.uf,
-		m.nome AS municipio,
-		COUNT(p.id_ativo)::int AS total_ativos
-	FROM ativos_rede p
-	JOIN municipios m
-		ON m.codigo_ibge::text = p.municipio
-	WHERE ${where}
-	GROUP BY p.bairro, m.uf, m.nome
-	ORDER BY p.bairro
-	LIMIT $${limiteParam}
-	OFFSET $${offsetParam}
-	`,
-      dataValues,
-    );
-
-    const dados: BairroDTO[] = result.rows.map((row) => ({
-      nome: row.nome,
-      uf: row.uf,
-      municipio: row.municipio,
-      totalAtivos: Number(row.total_ativos),
-    }));
-
-    return {
-      dados,
-      paginacao: {
-        pagina: params.pagina,
-        limite: params.limite,
-        total,
-        totalPaginas: Math.ceil(total / params.limite),
-      },
-    };
   }
 }

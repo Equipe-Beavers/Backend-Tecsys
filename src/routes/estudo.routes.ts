@@ -80,18 +80,6 @@ export async function estudoRoutes(
                             ]
                         },
 
-                        bairro: {
-                            anyOf: [
-                                {
-                                    type: "string",
-                                    maxLength: 120
-                                },
-                                {
-                                    type: "null"
-                                }
-                            ]
-                        },
-
                         geom: {
                             anyOf: [
                                 {

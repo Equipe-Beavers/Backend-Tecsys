@@ -16,7 +16,6 @@ export async function criarEstudo(
 
         uf: dados.uf ?? null,
         municipio: dados.municipio ?? null,
-        bairro: dados.bairro ?? null,
 
         geom: dados.geom ?? null,
 
