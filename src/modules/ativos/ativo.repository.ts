@@ -201,10 +201,11 @@ export async function findAssets(filters: AssetFilters): Promise<AssetsPage> {
     let municipioJoin = "";
 
     if (filters.distributors && filters.distributors.length > 0) {
-        values.push(filters.distributors);
+        const normalizados = filters.distributors.map((d) => d.trim().toUpperCase());
+        values.push(normalizados);
         const param = `$${values.length}`;
-        distributorCondition = ` AND distribuidora = ANY(${param}::text[])`;
-        conditions.push(`distribuidora = ANY(${param}::text[])`);
+        distributorCondition = ` AND UPPER(distribuidora) = ANY(${param}::text[])`;
+        conditions.push(`UPPER(distribuidora) = ANY(${param}::text[])`);
     }
 
     const municipio = filters.municipio?.trim();
