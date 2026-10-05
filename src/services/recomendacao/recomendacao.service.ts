@@ -1,6 +1,6 @@
-import { supabase } from "../../lib/supabase.js";
-import type { EstudoPonto } from "../../models/estudo-ponto.js";
-import type { PerfilRf } from "../../models/perfil-rf.js";
+import { supabase } from "../../database/supabase.js";
+import type { EstudoPonto } from "../../interface/estudo-ponto.js";
+import type { PerfilRf } from "../../interface/perfil-rf.js";
 import { calcularRecomendacao } from "./algoritmo.js";
 
 export interface GerarRecomendacaoInput {
