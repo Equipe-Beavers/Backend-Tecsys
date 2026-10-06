@@ -1,48 +1,85 @@
 import { supabase } from "../database/supabase.js";
 import type {
-  CriterioInstalacao,
-  CriarCriterioInstalacao,
-} from "../interface/criterio-instalacao.js";
-import { ValidationService } from "./ValidationService.js";
-
+  CreateInstallCriterionDTO,
+  InstallCriterionDTO,
+  ListInstallCriteriaDTO,
+} from "../interface/InstallCriterionDTO.js";
+import { InstallCriterionError } from "../utils/InstallCriterionError.js";
 
 export class InstallCriterionService {
-  private validationService: ValidationService;
+  private readonly fields = [
+    "id_usuario", "nome", "tipos_elementos_permitidos",
+    "tipos_elementos_proibidos", "requer_alimentacao_eletrica",
+    "distancia_maxima_ativos_m", "locais_autorizados",
+    "locais_obrigatorios", "locais_proibidos", "limite_gateways",
+  ] as const;
 
-  constructor() {
-    this.validationService = new ValidationService();
+  private readonly columns = [
+    "id_criterio_instalacao", ...this.fields, "criado_em", "atualizado_em",
+  ].join(",");
+
+  private prepareData(input: Partial<CreateInstallCriterionDTO>, create: boolean) {
+    const data: Record<string, unknown> = {};
+    for (const field of this.fields) {
+      if (Object.hasOwn(input, field)) data[field] = input[field];
+      else if (create) data[field] = null;
+    }
+    if (input.nome !== undefined) data.nome = input.nome.trim();
+    return data;
   }
 
-  async createInstallCriterion(installData: CriarCriterioInstalacao) {
-    await this.validationService.verifyRecord(
-      "usuarios",
-      "id_usuario",
-      installData.id_usuario,
-      "Usuário",
-    );
-
-    const criterio = {
-      id_usuario: installData.id_usuario,
-      nome: installData.nome.trim(),
-      descricao: installData.descricao?.trim() || null,
-      tipos_elementos_permitidos: installData.tipos_elementos_permitidos ?? null,
-      tipos_elementos_proibidos: installData.tipos_elementos_proibidos ?? null,
-      requer_alimentacao_eletrica: installData.requer_alimentacao_eletrica ?? null,
-      altura_minima_m: installData.altura_minima_m ?? null,
-      distancia_maxima_ativos_m: installData.distancia_maxima_ativos_m ?? null,
-      caracteristicas_minimas_local:
-        installData.caracteristicas_minimas_local ?? null,
-      locais_autorizados: installData.locais_autorizados ?? null,
-      locais_obrigatorios: installData.locais_obrigatorios ?? null,
-      locais_proibidos: installData.locais_proibidos ?? null,
-      limite_gateways: installData.limite_gateways ?? null,
-      custo_maximo: installData.custo_maximo ?? null,
-    };
-
+  async createInstallCriterion(input: CreateInstallCriterionDTO): Promise<InstallCriterionDTO> {
     const { data, error } = await supabase.from("criterios_instalacao")
-    .insert(criterio).select().single();
+      .insert({ ...this.prepareData(input, true), criado_em: new Date().toISOString() })
+      .select(this.columns).single();
+    // The foreign key validates the user atomically, without a preliminary query.
+    if (error?.code === "23503") {
+      throw new InstallCriterionError(400, "Usuário não encontrado.");
+    }
+    if (error) throw error;
+    return data as unknown as InstallCriterionDTO;
+  }
 
-    if (error) throw new Error(`Erro ao criar critério de instalação: ${error.message}.`);
-    return data as CriterioInstalacao;
+  async listInstallCriteria(input: ListInstallCriteriaDTO) {
+    const page = input.page ?? 1;
+    const limit = input.limit ?? 50;
+    let query = supabase.from("criterios_instalacao").select(this.columns);
+    if (input.id_usuario !== undefined) query = query.eq("id_usuario", input.id_usuario);
+    const { data, error } = await query.order("id_criterio_instalacao")
+      .range((page - 1) * limit, page * limit - 1);
+    if (error) throw error;
+    return { data: (data ?? []) as unknown as InstallCriterionDTO[], page, limit };
+  }
+
+  async getInstallCriterion(id: number): Promise<InstallCriterionDTO> {
+    const { data, error } = await supabase.from("criterios_instalacao")
+      .select(this.columns).eq("id_criterio_instalacao", id).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+    return data as unknown as InstallCriterionDTO;
+  }
+
+  async updateInstallCriterion(id: number, input: Partial<CreateInstallCriterionDTO>): Promise<InstallCriterionDTO> {
+    const { data, error } = await supabase.from("criterios_instalacao")
+      .update({ ...this.prepareData(input, false), atualizado_em: new Date().toISOString() })
+      .eq("id_criterio_instalacao", id).select(this.columns).maybeSingle();
+    if (error?.code === "23503") {
+      throw new InstallCriterionError(400, "Usuário não encontrado.");
+    }
+    if (error) throw error;
+    if (!data) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+    return data as unknown as InstallCriterionDTO;
+  }
+
+  async deleteInstallCriterion(id: number): Promise<void> {
+    // The database foreign key is authoritative, including concurrent changes.
+    const { data, error } = await supabase.from("criterios_instalacao")
+      .delete().eq("id_criterio_instalacao", id)
+      .select("id_criterio_instalacao").maybeSingle();
+    if (error?.code === "23503") {
+      throw new InstallCriterionError(409, "O critério de instalação está em uso e não pode ser excluído.");
+    }
+    if (error) throw error;
+    if (!data) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
   }
 }

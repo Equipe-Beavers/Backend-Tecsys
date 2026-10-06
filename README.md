@@ -2,6 +2,9 @@
 
 API backend do projeto Tecsys, desenvolvida em TypeScript com Fastify e PostgreSQL.
 
+O contrato e os exemplos do CRUD de critérios de instalação estão em
+[API de critérios de instalação](docs/InstallCriteriaApi.md).
+
 ## Pré-requisitos
 
 - Node.js instalado, preferencialmente versão 20 ou superior;
@@ -26,15 +29,15 @@ npm install
 
 ### 3. Criar o banco de dados
 
-O schema das tabelas está no arquivo [`database/schema.sql`](database/schema.sql). Ele cria a extensão PostGIS, as tabelas, os relacionamentos e os índices necessários.
+A única referência válida do banco é [`DER - Geomash.sql`](../DER%20-%20Geomash.sql), na raiz do repositório principal. Ignore `backend/database/schema.sql`, que é obsoleto. O DER cria a extensão PostGIS, as tabelas, os relacionamentos e os índices do modelo aprovado. As instruções abaixo são para um banco novo; o arquivo não é uma migração de bancos existentes.
 
-O schema não inclui as tabelas `distribuidoras` e `posicoes_geograficas`, usadas pelos endpoints de regiões para consultar o dataset BDGD. Essas tabelas e seus dados devem ser importados separadamente no banco escolhido.
+O DER inclui `posicoes_geograficas`, mas não define a tabela `distribuidoras` utilizada por endpoints antigos. Integrações com o dataset BDGD devem ser avaliadas conforme o DER aprovado.
 
 #### Opção A: Supabase
 
 1. Crie ou abra um projeto em [supabase.com](https://supabase.com/).
 2. No painel do projeto, acesse **SQL Editor** e crie uma nova query.
-3. Copie o conteúdo de [`database/schema.sql`](database/schema.sql), cole na query e clique em **Run**.
+3. Copie o conteúdo de [`DER - Geomash.sql`](../DER%20-%20Geomash.sql), cole na query e clique em **Run**.
 4. Confirme em **Table Editor** se as tabelas foram criadas.
 
 Para obter os dados da conexão PostgreSQL, acesse **Connect** no projeto Supabase e escolha o método de conexão recomendado para sua rede. Serão necessários host, porta, nome do banco, usuário e senha.
@@ -43,10 +46,10 @@ Para obter os dados da conexão PostgreSQL, acesse **Connect** no projeto Supaba
 
 1. Instale o PostgreSQL com a extensão PostGIS.
 2. Crie um banco, por exemplo `tecsys_data`.
-3. Execute o schema usando `psql`:
+3. Na pasta `backend` do repositório principal, execute o DER usando `psql`:
 
 ```bash
-psql -U postgres -d tecsys_data -f database/schema.sql
+psql -U postgres -d tecsys_data -f "../DER - Geomash.sql"
 ```
 
 Se o PostGIS não estiver instalado, a criação das colunas `GEOMETRY` falhará. Instale o pacote PostGIS compatível com sua versão do PostgreSQL antes de executar o arquivo.
