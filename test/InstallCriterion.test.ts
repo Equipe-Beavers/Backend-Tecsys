@@ -1,28 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app.js";
 
-const database = vi.hoisted(() => ({ from: vi.fn() }));
-vi.mock("../src/database/supabase.js", () => ({ supabase: database }));
+import {
+  createInstallCriterionQuery, listInstallCriteriaQuery, getInstallCriterionQuery,
+  updateInstallCriterionQuery, deleteInstallCriterionQuery,
+} from "../src/database/queries.js";
 
-// Each expected database operation has its own result and call history.
-// No request in this suite can reach a real Supabase project.
+const database = vi.hoisted(() => ({ query: vi.fn() }));
+vi.mock("../src/database/pool.js", () => ({ pool: database }));
+// Other modules are out of scope and cannot access Supabase during these tests.
+vi.mock("../src/database/supabase.js", () => ({ supabase: {} }));
+
 class DatabaseResult {
-  select = vi.fn().mockReturnThis();
-  eq = vi.fn().mockReturnThis();
-  insert = vi.fn().mockReturnThis();
-  update = vi.fn().mockReturnThis();
-  delete = vi.fn().mockReturnThis();
-  order = vi.fn().mockReturnThis();
-  range = vi.fn().mockReturnThis();
-  single = vi.fn().mockReturnThis();
-  maybeSingle = vi.fn().mockReturnThis();
-
-  constructor(private data: unknown, private error: unknown = null) {
-    database.from.mockReturnValueOnce(this);
-  }
-
-  then(resolve: (value: unknown) => unknown) {
-    return Promise.resolve({ data: this.data, error: this.error }).then(resolve);
+  constructor(data: unknown, error: unknown = null) {
+    if (error) database.query.mockRejectedValueOnce(error);
+    else database.query.mockResolvedValueOnce({ rows: data == null ? [] : Array.isArray(data) ? data : [data] });
   }
 }
 
@@ -38,7 +30,7 @@ describe("InstallCriterionController CRUD", () => {
   let app: ReturnType<App["getInstance"]>;
 
   beforeEach(() => {
-    database.from.mockReset();
+    database.query.mockReset();
     app = new App().getInstance();
     app.log.level = "silent";
   });
@@ -52,25 +44,23 @@ describe("InstallCriterionController CRUD", () => {
     expect(response.statusCode).toBe(204);
     expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:51234");
     expect(response.headers["access-control-allow-methods"]).toContain("PATCH");
-    expect(database.from).not.toHaveBeenCalled();
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it("creates using only the new model, trims the name and preserves JSON, false and zero", async () => {
-    const write = new DatabaseResult(criterion);
+    new DatabaseResult(criterion);
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload: {
       id_usuario: 1, nome: "  Postes  ", tipos_elementos_permitidos: ["POSTE"],
       requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0, limite_gateways: 3,
     } });
     expect(response.statusCode).toBe(201);
     expect(response.json().data).toEqual(criterion);
-    expect(write.insert).toHaveBeenCalledWith({
+    expect(database.query).toHaveBeenCalledTimes(1);
+    expect(database.query.mock.calls[0]?.[0]).toBe(createInstallCriterionQuery);
+    expect(JSON.parse(database.query.mock.calls[0]?.[1][0])).toEqual({
       id_usuario: 1, nome: "Postes", tipos_elementos_permitidos: ["POSTE"],
-      tipos_elementos_proibidos: null, requer_alimentacao_eletrica: false,
-      distancia_maxima_ativos_m: 0, locais_autorizados: null,
-      locais_obrigatorios: null, locais_proibidos: null, limite_gateways: 3,
-      criado_em: expect.any(String),
+      requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0, limite_gateways: 3,
     });
-    expect(write.select.mock.calls[0]?.[0]).not.toContain("descricao");
   });
 
   it.each([
@@ -89,24 +79,22 @@ describe("InstallCriterionController CRUD", () => {
   ])("rejects invalid or obsolete create payload before accessing the database: %j", async (payload) => {
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload });
     expect(response.statusCode).toBe(400);
-    expect(database.from).not.toHaveBeenCalled();
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it("rejects a nonexistent user through the foreign key", async () => {
     new DatabaseResult(null, { code: "23503" });
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload: { id_usuario: 99, nome: "Postes" } });
     expect(response.statusCode).toBe(400);
-    expect(database.from).toHaveBeenCalledTimes(1);
+    expect(database.query).toHaveBeenCalledTimes(1);
   });
 
   it("lists with user filter and deterministic pagination", async () => {
-    const query = new DatabaseResult([criterion]);
+    new DatabaseResult([criterion]);
     const response = await app.inject("/list-install-criteria?id_usuario=1&page=2&limit=10");
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ data: [criterion], page: 2, limit: 10 });
-    expect(query.eq).toHaveBeenCalledWith("id_usuario", 1);
-    expect(query.order).toHaveBeenCalledWith("id_criterio_instalacao");
-    expect(query.range).toHaveBeenCalledWith(10, 19);
+    expect(database.query).toHaveBeenCalledWith(listInstallCriteriaQuery, [1, 10, 10]);
   });
 
   it("returns an empty list with default pagination", async () => {
@@ -119,43 +107,53 @@ describe("InstallCriterionController CRUD", () => {
   it.each(["page=0", "limit=101", "id_usuario=invalid", "unexpected=true"])("rejects invalid list query: %s", async (query) => {
     const response = await app.inject(`/list-install-criteria?${query}`);
     expect(response.statusCode).toBe(400);
-    expect(database.from).not.toHaveBeenCalled();
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it("gets a criterion by ID", async () => {
-    const query = new DatabaseResult(criterion);
+    new DatabaseResult(criterion);
     const response = await app.inject("/get-install-criterion/7");
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ data: criterion });
-    expect(query.eq).toHaveBeenCalledWith("id_criterio_instalacao", 7);
+    expect(database.query).toHaveBeenCalledWith(getInstallCriterionQuery, [7]);
+  });
+
+  it("normalizes PostgreSQL BIGINT, NUMERIC and timestamp values for the frontend", async () => {
+    new DatabaseResult({ ...criterion, id_criterio_instalacao: "7", id_usuario: "1",
+      distancia_maxima_ativos_m: "1234.56", criado_em: new Date("2026-10-07T10:00:00Z") });
+    const response = await app.inject("/get-install-criterion/7");
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      id_criterio_instalacao: 7, id_usuario: 1, distancia_maxima_ativos_m: 1234.56,
+      criado_em: "2026-10-07T10:00:00.000Z", atualizado_em: null,
+    });
   });
 
   it.each(["zero", "0", "-1", "1.5", "9007199254740992"])("rejects invalid ID: %s", async (id) => {
     const response = await app.inject(`/get-install-criterion/${id}`);
     expect(response.statusCode).toBe(400);
-    expect(database.from).not.toHaveBeenCalled();
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it("patches only supplied fields and allows clearing nullable fields", async () => {
-    const write = new DatabaseResult({ ...criterion, nome: "Torres", limite_gateways: null });
+    new DatabaseResult({ ...criterion, nome: "Torres", limite_gateways: null });
     const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload: { nome: " Torres ", limite_gateways: null } });
     expect(response.statusCode).toBe(200);
-    expect(write.update).toHaveBeenCalledWith({ nome: "Torres", limite_gateways: null, atualizado_em: expect.any(String) });
-    expect(write.eq).toHaveBeenCalledWith("id_criterio_instalacao", 7);
-    expect(database.from).toHaveBeenCalledTimes(1);
+    expect(database.query).toHaveBeenCalledWith(updateInstallCriterionQuery, [7, JSON.stringify({ nome: "Torres", limite_gateways: null })]);
+    expect(database.query).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a replacement user through the foreign key", async () => {
     new DatabaseResult(null, { code: "23503" });
     const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload: { id_usuario: 99 } });
     expect(response.statusCode).toBe(400);
-    expect(database.from).toHaveBeenCalledTimes(1);
+    expect(database.query).toHaveBeenCalledTimes(1);
   });
 
   it.each([{}, { nome: null }, { nome: " " }, { id_usuario: null }, { id_criterio_instalacao: 10 }, { atualizado_em: "2020-01-01" }])("rejects invalid patch: %j", async (payload) => {
     const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload });
     expect(response.statusCode).toBe(400);
-    expect(database.from).not.toHaveBeenCalled();
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it.each(["GET", "PATCH", "DELETE"] as const)("returns 404 for missing criterion on %s", async (method) => {
@@ -166,12 +164,11 @@ describe("InstallCriterionController CRUD", () => {
   });
 
   it("deletes and returns 204 without a response body", async () => {
-    const write = new DatabaseResult({ id_criterio_instalacao: 7 });
+    new DatabaseResult({ id_criterio_instalacao: 7 });
     const response = await app.inject({ method: "DELETE", url: "/delete-install-criterion/7" });
     expect(response.statusCode).toBe(204);
     expect(response.body).toBe("");
-    expect(write.eq).toHaveBeenCalledWith("id_criterio_instalacao", 7);
-    expect(write.delete).toHaveBeenCalled();
+    expect(database.query).toHaveBeenCalledWith(deleteInstallCriterionQuery, [7]);
   });
 
   it("returns conflict when a study references the criterion", async () => {

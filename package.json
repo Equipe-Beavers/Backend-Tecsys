@@ -5,10 +5,15 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "npm run dev:local",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:local": "node --watch --import tsx scripts/RunLocal.mjs",
+    "db:local:up": "docker compose -f compose.criteria.local.yml up -d --wait",
+    "db:local:stop": "docker compose -f compose.criteria.local.yml stop",
+    "test:criteria:local": "node --import tsx scripts/TestCriteriaLocal.mjs",
+    "dev:aws": "node --watch --import tsx scripts/RunAws.mjs"
   },
   "repository": {
     "type": "git",

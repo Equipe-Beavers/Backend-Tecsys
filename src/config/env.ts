@@ -19,3 +19,9 @@ export const env = {
     },
     port: Number(process.env.PORT ?? 3000),
 };
+
+// Remote access must be explicitly enabled; local workflows never enable it.
+if (!["localhost", "127.0.0.1", "::1"].includes(env.database.host)
+    && process.env.ALLOW_REMOTE_DATABASE !== "true") {
+    throw new Error("Conexão PostgreSQL remota bloqueada. Use npm run dev:local para testes ou npm run dev:aws para acesso remoto explícito.");
+}
