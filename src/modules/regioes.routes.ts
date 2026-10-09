@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { RegioesRepository, type BoundingBox } from "../repository/regioes.repository.js";
+import { RegioesRepository, type BoundingBox } from "./repository/RegionsRepository.js";
 
 const LIMITE_PADRAO = 20;
 const LIMITE_MAXIMO = 100;
@@ -113,40 +113,6 @@ export async function regioesRoutes(app: FastifyInstance): Promise<void> {
             limite,
             pagina,
             bbox,
-        });
-        return respostaPaginada ? resultado : resultado.dados;
-    });
-
-    // GET /api/bairros
-    app.get<{
-        Querystring: {
-            distribuidora?: string;
-            distribuidoraId?: string;
-            municipio?: string;
-            busca?: string;
-            limite?: string;
-            pagina?: string;
-        };
-    }>('/bairros', async (req, reply) => {
-        const { distribuidora, distribuidoraId, municipio, busca } = req.query;
-        const limite = Math.min(
-            Math.max(Number(req.query.limite) || LIMITE_PADRAO, 1),
-            LIMITE_MAXIMO,
-        );
-        const pagina = paginaEValida(req.query.pagina);
-        const respostaPaginada = req.query.pagina !== undefined;
-
-        const resolucao = await resolverDistribuidora(distribuidora, distribuidoraId);
-        if (resolucao.erro) {
-            return reply.status(resolucao.erro.status).send({ erro: resolucao.erro.mensagem });
-        }
-
-        const resultado = await repo.listarBairros({
-            distribuidora: resolucao.nome,
-            municipio,
-            busca,
-            limite,
-            pagina,
         });
         return respostaPaginada ? resultado : resultado.dados;
     });

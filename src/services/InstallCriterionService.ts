@@ -1,48 +1,53 @@
-import { supabase } from "../database/supabase.js";
-import type {
-  CriterioInstalacao,
-  CriarCriterioInstalacao,
-} from "../interface/criterio-instalacao.js";
-import { ValidationService } from "./ValidationService.js";
-
+import { pool } from "../database/pool.js";
+import {
+  createInstallCriterionQuery, listInstallCriteriaQuery, getInstallCriterionQuery,
+  updateInstallCriterionQuery, deleteInstallCriterionQuery,
+} from "../database/queries.js";
+import type { CreateInstallCriterionDTO, InstallCriterionDTO, ListInstallCriteriaDTO } from "../interface/InstallCriterionDTO.js";
+import { InstallCriterionError } from "../utils/InstallCriterionError.js";
+import { InstallCriterionUtils } from "../utils/InstallCriterionUtils.js";
 
 export class InstallCriterionService {
-  private validationService: ValidationService;
+  private readonly utils = new InstallCriterionUtils();
 
-  constructor() {
-    this.validationService = new ValidationService();
+  async createInstallCriterion(input: CreateInstallCriterionDTO): Promise<InstallCriterionDTO> {
+    try {
+      const { rows } = await pool.query(createInstallCriterionQuery, [this.utils.PrepareData(input)]);
+      return this.utils.MapRow(rows[0]);
+    } catch (error) {
+      return this.utils.RethrowDatabaseError(error);
+    }
   }
 
-  async createInstallCriterion(installData: CriarCriterioInstalacao) {
-    await this.validationService.verifyRecord(
-      "usuarios",
-      "id_usuario",
-      installData.id_usuario,
-      "Usuário",
-    );
+  async listInstallCriteria(input: ListInstallCriteriaDTO) {
+    const page = input.page ?? 1;
+    const limit = input.limit ?? 50;
+    const { rows } = await pool.query(listInstallCriteriaQuery, [input.id_usuario ?? null, limit, (page - 1) * limit]);
+    return { data: rows.map((row) => this.utils.MapRow(row)), page, limit };
+  }
 
-    const criterio = {
-      id_usuario: installData.id_usuario,
-      nome: installData.nome.trim(),
-      descricao: installData.descricao?.trim() || null,
-      tipos_elementos_permitidos: installData.tipos_elementos_permitidos ?? null,
-      tipos_elementos_proibidos: installData.tipos_elementos_proibidos ?? null,
-      requer_alimentacao_eletrica: installData.requer_alimentacao_eletrica ?? null,
-      altura_minima_m: installData.altura_minima_m ?? null,
-      distancia_maxima_ativos_m: installData.distancia_maxima_ativos_m ?? null,
-      caracteristicas_minimas_local:
-        installData.caracteristicas_minimas_local ?? null,
-      locais_autorizados: installData.locais_autorizados ?? null,
-      locais_obrigatorios: installData.locais_obrigatorios ?? null,
-      locais_proibidos: installData.locais_proibidos ?? null,
-      limite_gateways: installData.limite_gateways ?? null,
-      custo_maximo: installData.custo_maximo ?? null,
-    };
+  async getInstallCriterion(id: number): Promise<InstallCriterionDTO> {
+    const { rows } = await pool.query(getInstallCriterionQuery, [id]);
+    if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+    return this.utils.MapRow(rows[0]);
+  }
 
-    const { data, error } = await supabase.from("criterios_instalacao")
-    .insert(criterio).select().single();
+  async updateInstallCriterion(id: number, input: Partial<CreateInstallCriterionDTO>): Promise<InstallCriterionDTO> {
+    try {
+      const { rows } = await pool.query(updateInstallCriterionQuery, [id, this.utils.PrepareData(input)]);
+      if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+      return this.utils.MapRow(rows[0]);
+    } catch (error) {
+      return this.utils.RethrowDatabaseError(error);
+    }
+  }
 
-    if (error) throw new Error(`Erro ao criar critério de instalação: ${error.message}.`);
-    return data as CriterioInstalacao;
+  async deleteInstallCriterion(id: number): Promise<void> {
+    try {
+      const { rows } = await pool.query(deleteInstallCriterionQuery, [id]);
+      if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+    } catch (error) {
+      this.utils.RethrowDatabaseError(error, true);
+    }
   }
 }
