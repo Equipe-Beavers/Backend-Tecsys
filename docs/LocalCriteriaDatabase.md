@@ -10,12 +10,14 @@ O CRUD de critérios utiliza PostgreSQL pelo driver `pg`, sem acessar o Supabase
 | Banco | `geomash_criteria_test` | Banco já configurado pela equipe |
 | Host/porta PostgreSQL | `127.0.0.1:5433` | `DB_HOST` e `DB_PORT` do `.env` |
 | API | `http://localhost:3001` | `PORT` do `.env` |
-| Comando | `npm run dev:local` ou `npm run dev` | `npm run dev:aws` (acesso remoto explícito) |
+| Comando | `npm run dev:local` (banco isolado) ou `npm run dev:loopback` (PostgreSQL local do `.env`) | `npm run dev:aws` (acesso remoto explícito) |
 | Supabase | Bloqueado | Não utilizado pelos critérios; outros módulos mantêm sua implementação |
 
 O carregador local sobrescreve as variáveis do processo com `.env.local` antes de importar a aplicação. Verifica o host, porta, nome e usuário esperados, desativa o Supabase e bloqueia acesso remoto. Assim, as credenciais da AWS podem permanecer no `.env` sem serem usadas nos testes locais.
 
 A configuração compartilhada de PostgreSQL rejeita hosts remotos sem `ALLOW_REMOTE_DATABASE=true`. O comando `dev:aws` habilita essa opção explicitamente. Para execução remota do build com `npm start`, essa variável também deve ser fornecida pelo ambiente de implantação. Nenhum desses modos remotos foi executado nesta entrega.
+
+`npm run dev:loopback` carrega `.env`, exige host PostgreSQL `localhost`, `127.0.0.1` ou `::1`, desabilita Supabase e inicia a API na porta 3000, usada por padrão pelo frontend. Ele nunca habilita acesso a bancos remotos.
 
 ## Iniciar
 
@@ -34,8 +36,21 @@ Na primeira criação do volume, o contêiner executa:
 
 1. O arquivo original `../DER - Geomash.sql`, montado somente para leitura.
 2. `database/local/002-criteria-seed.sql`, com dados fictícios.
+3. `database/migrations/003-install-criterion-min-distance.sql`, que adiciona a distância mínima e valida a ordem dos limites.
+4. `database/migrations/004-remove-installation-locations.sql`, que elimina as colunas de locais descontinuadas.
+5. `database/migrations/005-install-criterion-json-sections.sql`, que adiciona as quatro colunas JSONB avançadas usadas pela API.
 
-`backend/database/schema.sql` não é utilizado. O DER completo é aplicado para que as chaves estrangeiras e os tipos geográficos sejam iguais aos aprovados, sem implementar as funcionalidades dos outros módulos. Alterar o DER depois de criar o volume não aplica uma migração automaticamente.
+`backend/database/schema.sql` não é utilizado. O DER completo é aplicado para que as chaves estrangeiras e os tipos geográficos sejam iguais aos aprovados, sem implementar as funcionalidades dos outros módulos. Alterar o DER depois de criar o volume não aplica uma migração automaticamente. Para um volume existente, aplique manualmente as migrações `003-install-criterion-min-distance.sql` e `004-remove-installation-locations.sql` com `psql` antes de iniciar a nova API. A migração 004 remove os dados antigos de locais dessas colunas.
+
+Em um banco local já inicializado, aplique as migrações idempotentes na pasta `backend`:
+
+```bash
+docker compose -f compose.criteria.local.yml exec -T criteria-db psql -U geomash_local -d geomash_criteria_test < database/migrations/003-install-criterion-min-distance.sql
+docker compose -f compose.criteria.local.yml exec -T criteria-db psql -U geomash_local -d geomash_criteria_test < database/migrations/004-remove-installation-locations.sql
+docker compose -f compose.criteria.local.yml exec -T criteria-db psql -U geomash_local -d geomash_criteria_test < database/migrations/005-install-criterion-json-sections.sql
+```
+
+Essas migrações mantêm compatível apenas o contêiner de testes baseado no DER legado. Para outros bancos, não aplique automaticamente as migrações 003/004: o CRUD atual requer as colunas listadas em `criterios_instalacao` no schema usado pelo ambiente e não depende de `distancia_minima_ativos_m`.
 
 ## Dados de teste
 
@@ -76,7 +91,7 @@ npm test -- test/InstallCriterion.test.ts test/LocalDatabaseConfig.test.ts
 npm run test:criteria:local
 ```
 
-Os testes unitários substituem o pool por resultados controlados e não abrem conexões remotas. O teste de integração usa o banco local real e as rotas Fastify via `inject`, sem exigir um servidor HTTP em execução. Valida criação, consulta, paginação, atualização parcial, JSONB, datas, normalização numérica, chaves estrangeiras e exclusão. Os registros temporários que ele cria são excluídos ao terminar; a carga inicial é preservada.
+Os testes unitários substituem o pool por resultados controlados e não abrem conexões remotas. O teste de integração usa o banco local real e as rotas Fastify via `inject`, sem exigir um servidor HTTP em execução. Valida criação, consulta, paginação, atualização parcial, os campos JSONB de relevo/vegetação/edificações/antenas, datas, normalização numérica, chaves estrangeiras e exclusão. Os registros temporários que ele cria são excluídos ao terminar; a carga inicial é preservada.
 
 O teste local valida a configuração antes de importar a conexão. Ele não pode ser direcionado à AWS por `DB_HOST` herdado do terminal.
 

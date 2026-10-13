@@ -21,8 +21,11 @@ try {
     id_usuario: 1, nome: " [TESTE AUTOMÁTICO] d'instalação; -- ",
     tipos_elementos_permitidos: ['POSTE', 'TORRE'], tipos_elementos_proibidos: { custom: ['x'] },
     requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 1234.56,
-    locais_autorizados: { ids: ['A'] }, locais_obrigatorios: [], locais_proibidos: null,
     limite_gateways: 3,
+    relevo: { altitude_minima_m: 100, declividade_maxima_graus: 20 },
+    vegetacoes: { permitidas: ['PASTAGEM'], proibidas: ['MANGUE'] },
+    edificacoes: { raio_analise_m: 300, quantidade_maxima: 4 },
+    antenas: { distancia_maxima_m: 1000, considerar_conflito_frequencia: false },
   };
   const create = await app.inject({ method: 'POST', url: '/create-install-criterion', payload });
   assert.equal(create.statusCode, 201, create.body);
@@ -30,7 +33,7 @@ try {
   createdIds.add(criterion.id_criterio_instalacao);
   check(typeof criterion.id_criterio_instalacao === 'number' && typeof criterion.id_usuario === 'number', 'IDs numéricos compatíveis com o frontend');
   check(criterion.nome === payload.nome.trim(), 'Nome com apóstrofo preservado por parâmetros SQL');
-  check(criterion.distancia_maxima_ativos_m === 1234.56 && criterion.requer_alimentacao_eletrica === false, 'Decimal e false preservados');
+  check(criterion.distancia_maxima_ativos_m === 1234.56 && criterion.requer_alimentacao_eletrica === false, 'Distância máxima e false preservados');
   check(typeof criterion.criado_em === 'string' && criterion.atualizado_em === null, 'Datas geradas pelo PostgreSQL');
   assert.deepEqual(criterion.tipos_elementos_proibidos, payload.tipos_elementos_proibidos); checks++;
 
@@ -39,14 +42,23 @@ try {
   assert.deepEqual(get.json().data, criterion); checks++;
   const persisted = await pool.query(getInstallCriterionQuery, [criterion.id_criterio_instalacao]);
   check(persisted.rows.length === 1 && Number(persisted.rows[0].distancia_maxima_ativos_m) === 1234.56, 'Persistência real local');
+  assert.deepEqual(criterion.relevo, payload.relevo); checks++;
+  assert.deepEqual(criterion.vegetacoes, payload.vegetacoes); checks++;
+  assert.deepEqual(criterion.edificacoes, payload.edificacoes); checks++;
+  assert.deepEqual(criterion.antenas, payload.antenas); checks++;
 
   const patch = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
-    payload: { nome: '[TESTE AUTOMÁTICO] Revisado', distancia_maxima_ativos_m: 0, limite_gateways: null, locais_autorizados: null } });
+    payload: { nome: '[TESTE AUTOMÁTICO] Revisado', distancia_maxima_ativos_m: 0, limite_gateways: null, relevo: { altitude_maxima_m: 900 } } });
   assert.equal(patch.statusCode, 200, patch.body);
   const updated = patch.json().data;
-  check(updated.distancia_maxima_ativos_m === 0 && updated.limite_gateways === null && updated.locais_autorizados === null, 'PATCH aceita zero e limpa opcionais');
+  check(updated.distancia_maxima_ativos_m === 0 && updated.limite_gateways === null, 'PATCH atualiza distância máxima e limpa opcionais');
+  assert.deepEqual(updated.relevo, { altitude_maxima_m: 900 }); checks++;
   assert.deepEqual(updated.tipos_elementos_proibidos, payload.tipos_elementos_proibidos); checks++;
   check(updated.requer_alimentacao_eletrica === false && typeof updated.atualizado_em === 'string', 'PATCH preserva omitidos e atualiza data');
+
+  const invalidField = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
+    payload: { distancia_minima_ativos_m: 1000 } });
+  check(invalidField.statusCode === 400, 'PATCH rejeita distância mínima ausente do schema');
 
   const invalidUser = await app.inject({ method: 'POST', url: '/create-install-criterion', payload: { id_usuario: 9007199254740991, nome: 'Usuário inexistente' } });
   check(invalidUser.statusCode === 400, 'FK de usuário no INSERT retorna 400');

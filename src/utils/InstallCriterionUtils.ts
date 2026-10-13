@@ -4,8 +4,8 @@ import { InstallCriterionError } from "./InstallCriterionError.js";
 export class InstallCriterionUtils {
   private readonly fields = [
     "id_usuario", "nome", "tipos_elementos_permitidos", "tipos_elementos_proibidos",
-    "requer_alimentacao_eletrica", "distancia_maxima_ativos_m", "locais_autorizados",
-    "locais_obrigatorios", "locais_proibidos", "limite_gateways",
+    "requer_alimentacao_eletrica", "distancia_maxima_ativos_m", "limite_gateways",
+    "relevo", "vegetacoes", "edificacoes", "antenas",
   ] as const;
 
   PrepareData(input: Partial<CreateInstallCriterionDTO>): string {

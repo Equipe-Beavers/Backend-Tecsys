@@ -10,6 +10,7 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "dev:local": "node --watch --import tsx scripts/RunLocal.mjs",
+    "dev:loopback": "node --watch --import tsx scripts/RunLoopback.mjs",
     "db:local:up": "docker compose -f compose.criteria.local.yml up -d --wait",
     "db:local:stop": "docker compose -f compose.criteria.local.yml stop",
     "test:criteria:local": "node --import tsx scripts/TestCriteriaLocal.mjs",

@@ -14,15 +14,14 @@ ON CONFLICT (id_usuario) DO NOTHING;
 INSERT INTO criterios_instalacao (
   id_criterio_instalacao, id_usuario, nome, tipos_elementos_permitidos,
   tipos_elementos_proibidos, requer_alimentacao_eletrica,
-  distancia_maxima_ativos_m, locais_autorizados, locais_obrigatorios,
-  locais_proibidos, limite_gateways
+  distancia_maxima_ativos_m, limite_gateways
 ) VALUES
-  (1, 1, '[TESTE LOCAL] Sem restrições', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+  (1, 1, '[TESTE LOCAL] Sem restrições', NULL, NULL, NULL, NULL, NULL),
   (2, 1, '[TESTE LOCAL] Postes e subestações', '["POSTE","SUBESTACAO"]', '["ESTRUTURA_PROVISORIA"]',
-   TRUE, 1500, '["POSTE:FICTICIO-1","SUBESTACAO:FICTICIA-1"]', '[]', '["LOCAL:FICTICIO-RESTRITO"]', 10),
+   TRUE, 1500, 10),
   (3, 1, '[TESTE LOCAL] Em uso — exclusão bloqueada', '["TORRE"]', '[]',
-   FALSE, 3000, '[]', '[]', '[]', 5),
-  (4, 2, '[TESTE LOCAL] Outro usuário', '["POSTE"]', NULL, FALSE, 0, NULL, NULL, NULL, 1)
+   FALSE, 3000, 5),
+  (4, 2, '[TESTE LOCAL] Outro usuário', '["POSTE"]', NULL, FALSE, 0, 1)
 ON CONFLICT (id_criterio_instalacao) DO NOTHING;
 
 -- Minimal dependencies to exercise the criterion's foreign-key deletion guard.

@@ -18,6 +18,7 @@ export const env = {
         ssl: process.env.DB_SSL?.toLowerCase() === "true",
     },
     port: Number(process.env.PORT ?? 3000),
+    host: process.env.API_HOST ?? "0.0.0.0",
 };
 
 // Remote access must be explicitly enabled; local workflows never enable it.

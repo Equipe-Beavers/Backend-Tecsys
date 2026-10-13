@@ -46,9 +46,6 @@ CREATE TABLE IF NOT EXISTS criterios_instalacao (
     tipos_elementos_proibidos JSONB,
     requer_alimentacao_eletrica BOOLEAN,
     distancia_maxima_ativos_m DECIMAL(12, 2),
-    locais_autorizados JSONB,
-    locais_obrigatorios JSONB,
-    locais_proibidos JSONB,
     limite_gateways INT,
     criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP

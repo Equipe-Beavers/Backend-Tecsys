@@ -3,7 +3,9 @@ import { App } from "../src/app.js";
 
 import {
   createInstallCriterionQuery, listInstallCriteriaQuery, getInstallCriterionQuery,
-  updateInstallCriterionQuery, deleteInstallCriterionQuery,
+  updateInstallCriterionQuery, deleteInstallCriterionQuery, listRFProfilesQuery,
+  createRFProfileQuery, getRFProfileQuery, updateRFProfileQuery,
+  deleteRFProfileQuery,
 } from "../src/database/queries.js";
 
 const database = vi.hoisted(() => ({ query: vi.fn() }));
@@ -21,9 +23,9 @@ class DatabaseResult {
 const criterion = {
   id_criterio_instalacao: 7, id_usuario: 1, nome: "Postes",
   tipos_elementos_permitidos: ["POSTE"], tipos_elementos_proibidos: null,
-  requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0,
-  locais_autorizados: null, locais_obrigatorios: null, locais_proibidos: null,
-  limite_gateways: 3, criado_em: "2026-10-06T12:00:00.000Z", atualizado_em: null,
+  requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0, limite_gateways: 3,
+  relevo: null, vegetacoes: null, edificacoes: null, antenas: null,
+  criado_em: "2026-10-06T12:00:00.000Z", atualizado_em: null,
 };
 
 describe("InstallCriterionController CRUD", () => {
@@ -52,6 +54,10 @@ describe("InstallCriterionController CRUD", () => {
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload: {
       id_usuario: 1, nome: "  Postes  ", tipos_elementos_permitidos: ["POSTE"],
       requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0, limite_gateways: 3,
+      relevo: { altitude_minima_m: 10, declividade_maxima_graus: 20 },
+      vegetacoes: { permitidas: ["PASTAGEM"], proibidas: ["MANGUE"] },
+      edificacoes: { quantidade_maxima: 3 },
+      antenas: { considerar_conflito_frequencia: false },
     } });
     expect(response.statusCode).toBe(201);
     expect(response.json().data).toEqual(criterion);
@@ -60,6 +66,10 @@ describe("InstallCriterionController CRUD", () => {
     expect(JSON.parse(database.query.mock.calls[0]?.[1][0])).toEqual({
       id_usuario: 1, nome: "Postes", tipos_elementos_permitidos: ["POSTE"],
       requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0, limite_gateways: 3,
+      relevo: { altitude_minima_m: 10, declividade_maxima_graus: 20 },
+      vegetacoes: { permitidas: ["PASTAGEM"], proibidas: ["MANGUE"] },
+      edificacoes: { quantidade_maxima: 3 },
+      antenas: { considerar_conflito_frequencia: false },
     });
   });
 
@@ -67,6 +77,7 @@ describe("InstallCriterionController CRUD", () => {
     {}, { id_usuario: 1 }, { id_usuario: 1, nome: "   " },
     { id_usuario: 0, nome: "Postes" }, { id_usuario: 1, nome: "x".repeat(151) },
     { id_usuario: 1, nome: "Postes", distancia_maxima_ativos_m: -1 },
+    { id_usuario: 1, nome: "Postes", distancia_minima_ativos_m: 10 },
     { id_usuario: 1, nome: "Postes", limite_gateways: 1.5 },
     { id_usuario: 1, nome: "Postes", limite_gateways: 0 },
     { id_usuario: 1, nome: "Postes", limite_gateways: 2147483648 },
@@ -75,6 +86,9 @@ describe("InstallCriterionController CRUD", () => {
     { id_usuario: 1, nome: "Postes", altura_minima_m: 10 },
     { id_usuario: 1, nome: "Postes", caracteristicas_minimas_local: {} },
     { id_usuario: 1, nome: "Postes", custo_maximo: 100 },
+    { id_usuario: 1, nome: "Postes", locais_autorizados: [] },
+    { id_usuario: 1, nome: "Postes", locais_obrigatorios: [] },
+    { id_usuario: 1, nome: "Postes", locais_proibidos: [] },
     { id_usuario: 1, nome: "Postes", criado_em: "2020-01-01" },
   ])("rejects invalid or obsolete create payload before accessing the database: %j", async (payload) => {
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload });
@@ -102,6 +116,211 @@ describe("InstallCriterionController CRUD", () => {
     const response = await app.inject("/list-install-criteria");
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ data: [], page: 1, limit: 50 });
+  });
+
+  it("lists RF profiles with user filtering, pagination and numeric normalization", async () => {
+    new DatabaseResult({
+      id_perfil_rf: "8", id_usuario: "1", nome: "LoRa urbano",
+      frequencia_mhz: "915.000", potencia_transmissao_dbm: "21.000",
+      sensibilidade_recepcao_dbm: "-120.000", altura_gateway_m: "6.00",
+      altura_dispositivo_m: "5.00", capacidade_max_equipamentos: 40,
+      atenuacao_adicional_db: null, considera_relevo: true,
+      considera_vegetacao: true, considera_edificacoes: false,
+      considera_antenas: true, criado_em: new Date("2026-10-07T10:00:00Z"),
+      atualizado_em: null,
+    });
+    const response = await app.inject("/list-rf-profiles?id_usuario=1&page=2&limit=10");
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      page: 2,
+      limit: 10,
+      data: [{
+        id_perfil_rf: 8, id_usuario: 1, frequencia_mhz: 915,
+        potencia_transmissao_dbm: 21, sensibilidade_recepcao_dbm: -120,
+        altura_gateway_m: 6, capacidade_max_equipamentos: 40,
+        criado_em: "2026-10-07T10:00:00.000Z",
+      }],
+    });
+    expect(database.query).toHaveBeenCalledWith(listRFProfilesQuery, [1, 10, 10]);
+  });
+
+  it("rejects invalid RF profile pagination before querying", async () => {
+    const response = await app.inject("/list-rf-profiles?id_usuario=1&page=0");
+    expect(response.statusCode).toBe(400);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it("creates an RF profile using only columns in the local schema", async () => {
+    const profile = {
+      id_perfil_rf: 12, id_usuario: 1, nome: "GW-9200 LoRaWAN",
+      frequencia_mhz: 915, potencia_transmissao_dbm: 8,
+      sensibilidade_recepcao_dbm: -120, altura_gateway_m: 6,
+      altura_dispositivo_m: 5, capacidade_max_equipamentos: 1200,
+      atenuacao_adicional_db: 4.2, considera_relevo: true,
+      considera_vegetacao: false, considera_edificacoes: true,
+      considera_antenas: true, criado_em: "2026-10-12T10:00:00.000Z",
+      atualizado_em: null,
+    };
+    new DatabaseResult({
+      ...profile,
+      id_perfil_rf: "12",
+      id_usuario: "1",
+      frequencia_mhz: "915.000",
+      potencia_transmissao_dbm: "8.000",
+      sensibilidade_recepcao_dbm: "-120.000",
+      altura_gateway_m: "6.00",
+      altura_dispositivo_m: "5.00",
+      atenuacao_adicional_db: "4.200",
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/create-rf-profile",
+      payload: {
+        id_usuario: 1,
+        nome: " GW-9200 LoRaWAN ",
+        frequencia_mhz: 915,
+        potencia_transmissao_dbm: 8,
+        sensibilidade_recepcao_dbm: -120,
+        altura_gateway_m: 6,
+        altura_dispositivo_m: 5,
+        capacidade_max_equipamentos: 1200,
+        atenuacao_adicional_db: 4.2,
+        considera_relevo: true,
+        considera_vegetacao: false,
+        considera_edificacoes: true,
+        considera_antenas: true,
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject(profile);
+    expect(database.query).toHaveBeenCalledWith(createRFProfileQuery, [JSON.stringify({
+      id_usuario: 1,
+      nome: "GW-9200 LoRaWAN",
+      frequencia_mhz: 915,
+      potencia_transmissao_dbm: 8,
+      sensibilidade_recepcao_dbm: -120,
+      altura_gateway_m: 6,
+      altura_dispositivo_m: 5,
+      capacidade_max_equipamentos: 1200,
+      atenuacao_adicional_db: 4.2,
+      considera_relevo: true,
+      considera_vegetacao: false,
+      considera_edificacoes: true,
+      considera_antenas: true,
+    })]);
+  });
+
+  it("rejects incomplete RF profile data before querying", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/create-rf-profile",
+      payload: { id_usuario: 1, nome: "Incompleto" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it("gets an RF profile by ID and normalizes database numeric values", async () => {
+    new DatabaseResult({
+      id_perfil_rf: "12", id_usuario: "1", nome: "GW-9200 LoRaWAN",
+      frequencia_mhz: "915.000", potencia_transmissao_dbm: "8.000",
+      sensibilidade_recepcao_dbm: "-120.000", altura_gateway_m: "1.20",
+      altura_dispositivo_m: "1.20", capacidade_max_equipamentos: 1200,
+      atenuacao_adicional_db: "4.200", considera_relevo: true,
+      considera_vegetacao: false, considera_edificacoes: true,
+      considera_antenas: true, criado_em: new Date("2026-10-12T10:00:00Z"),
+      atualizado_em: null,
+    });
+    const response = await app.inject("/get-rf-profile/12");
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      id_perfil_rf: 12,
+      id_usuario: 1,
+      frequencia_mhz: 915,
+      potencia_transmissao_dbm: 8,
+      sensibilidade_recepcao_dbm: -120,
+      altura_gateway_m: 1.2,
+      atenuacao_adicional_db: 4.2,
+      considera_vegetacao: false,
+      criado_em: "2026-10-12T10:00:00.000Z",
+    });
+    expect(database.query).toHaveBeenCalledWith(getRFProfileQuery, [12]);
+  });
+
+  it("returns 404 when an RF profile does not exist", async () => {
+    new DatabaseResult([]);
+    const response = await app.inject("/get-rf-profile/99");
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("patches supplied RF profile fields without replacing its owner", async () => {
+    new DatabaseResult({
+      id_perfil_rf: 12, id_usuario: 1, nome: "GW revisado",
+      frequencia_mhz: 915, potencia_transmissao_dbm: 8,
+      sensibilidade_recepcao_dbm: -120, altura_gateway_m: 1.2,
+      altura_dispositivo_m: 1.2, capacidade_max_equipamentos: 1200,
+      atenuacao_adicional_db: 4.2, considera_relevo: true,
+      considera_vegetacao: true, considera_edificacoes: true,
+      considera_antenas: true, criado_em: "2026-10-12T10:00:00.000Z",
+      atualizado_em: "2026-10-12T11:00:00.000Z",
+    });
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/update-rf-profile/12",
+      payload: { nome: " GW revisado ", considera_vegetacao: true },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.nome).toBe("GW revisado");
+    expect(database.query).toHaveBeenCalledWith(
+      updateRFProfileQuery,
+      [12, JSON.stringify({ nome: "GW revisado", considera_vegetacao: true })],
+    );
+  });
+
+  it("rejects owner changes and empty RF profile patches", async () => {
+    const ownerChange = await app.inject({
+      method: "PATCH",
+      url: "/update-rf-profile/12",
+      payload: { id_usuario: 2 },
+    });
+    const emptyPatch = await app.inject({
+      method: "PATCH",
+      url: "/update-rf-profile/12",
+      payload: {},
+    });
+    expect(ownerChange.statusCode).toBe(400);
+    expect(emptyPatch.statusCode).toBe(400);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it("deletes an RF profile and returns 204", async () => {
+    new DatabaseResult({ id_perfil_rf: 8 });
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/delete-rf-profile/8",
+    });
+    expect(response.statusCode).toBe(204);
+    expect(response.body).toBe("");
+    expect(database.query).toHaveBeenCalledWith(deleteRFProfileQuery, [8]);
+  });
+
+  it("returns 404 when deleting a missing RF profile", async () => {
+    new DatabaseResult([]);
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/delete-rf-profile/99",
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("returns 409 when a study references the RF profile", async () => {
+    new DatabaseResult(null, { code: "23503" });
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/delete-rf-profile/8",
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toContain("vinculado a estudos");
   });
 
   it.each(["page=0", "limit=101", "id_usuario=invalid", "unexpected=true"])("rejects invalid list query: %s", async (query) => {
@@ -136,10 +355,10 @@ describe("InstallCriterionController CRUD", () => {
   });
 
   it("patches only supplied fields and allows clearing nullable fields", async () => {
-    new DatabaseResult({ ...criterion, nome: "Torres", limite_gateways: null });
-    const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload: { nome: " Torres ", limite_gateways: null } });
+    new DatabaseResult({ ...criterion, nome: "Torres", limite_gateways: null, relevo: { altitude_minima_m: 80 } });
+    const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload: { nome: " Torres ", limite_gateways: null, relevo: { altitude_minima_m: 80 } } });
     expect(response.statusCode).toBe(200);
-    expect(database.query).toHaveBeenCalledWith(updateInstallCriterionQuery, [7, JSON.stringify({ nome: "Torres", limite_gateways: null })]);
+    expect(database.query).toHaveBeenCalledWith(updateInstallCriterionQuery, [7, JSON.stringify({ nome: "Torres", limite_gateways: null, relevo: { altitude_minima_m: 80 } })]);
     expect(database.query).toHaveBeenCalledTimes(1);
   });
 

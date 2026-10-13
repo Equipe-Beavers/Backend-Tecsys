@@ -34,3 +34,4 @@ coverage/
 .env.*
 !.env.example
 !.env.local.example
+tecsys_backup.dump
