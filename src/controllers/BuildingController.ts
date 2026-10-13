@@ -1,12 +1,11 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { BuildingService } from "../services/BuildingService.js";
-import type {
-    CalculateObstructionDTO,
-    ImportBuildingsDTO,
-    ListBuildingsDTO,
-    UpdateBuildingDTO,
-    UpdateBuildingMaterialDTO,
-} from "../interface/BuildingDTO.js";
+import { BuildingService, BuildingSourceError } from "../services/BuildingService.js";
+import type { CalculateObstructionDTO, ListBuildingsDTO } from "../interface/BuildingDTO.js";
+
+/** 503 quando a fonte externa falha; 400 para erros de validação. */
+function errorStatus(error: unknown): number {
+    return error instanceof BuildingSourceError ? error.statusCode : 400;
+}
 
 export class BuildingController {
     private buildingService: BuildingService;
@@ -17,121 +16,33 @@ export class BuildingController {
 
     async ListBuildings(request: FastifyRequest<{ Querystring: ListBuildingsDTO }>, reply: FastifyReply) {
         try {
-            const { data, total } = await this.buildingService.listBuildings(request.query);
+            const { data, total, fonte, versao_fonte } = await this.buildingService.listBuildings(request.query);
 
             if (request.query.format === "geojson") {
                 return reply.status(200).send({
                     type: "FeatureCollection",
                     total,
+                    fonte,
+                    versao_fonte,
                     features: data.map(({ geometria, ...properties }) => ({
                         type: "Feature",
-                        id: properties.id_edificacao,
+                        id: properties.id,
                         geometry: geometria,
                         properties,
                     })),
                 });
             }
 
-            return reply.status(200).send({ data, total });
+            return reply.status(200).send({ data, total, fonte, versao_fonte });
         } catch (error: any) {
-            return reply.status(400).send({
+            return reply.status(errorStatus(error)).send({
                 message: error.message || "Erro inesperado ao listar edificações.",
             });
         }
     }
 
-    async ImportBuildings(request: FastifyRequest<{ Body: ImportBuildingsDTO }>, reply: FastifyReply) {
-        try {
-            const data = await this.buildingService.importBuildings(request.body);
-            return reply.status(200).send({
-                message: data.ja_importada
-                    ? "As edificações dessa área já estavam importadas."
-                    : "Edificações importadas com sucesso!",
-                data,
-            });
-        } catch (error: any) {
-            return reply.status(400).send({
-                message: error.message || "Erro inesperado ao importar edificações.",
-            });
-        }
-    }
-
-    async ImportStudyBuildings(
-        request: FastifyRequest<{ Params: { id: number }; Body: { force?: boolean } | undefined }>,
-        reply: FastifyReply,
-    ) {
-        try {
-            const data = await this.buildingService.importStudyBuildings(request.params.id, request.body?.force ?? false);
-            return reply.status(200).send({
-                message: data.ja_importada
-                    ? "As edificações da área do estudo já estavam importadas."
-                    : "Edificações da área do estudo importadas com sucesso!",
-                data,
-            });
-        } catch (error: any) {
-            return reply.status(400).send({
-                message: error.message || "Erro inesperado ao importar edificações do estudo.",
-            });
-        }
-    }
-
-    async GetBuilding(
-        request: FastifyRequest<{ Params: { id: number }; Querystring: { frequencyMhz?: number } }>,
-        reply: FastifyReply,
-    ) {
-        try {
-            const data = await this.buildingService.getBuilding(request.params.id, request.query.frequencyMhz);
-            return reply.status(200).send({ data });
-        } catch (error: any) {
-            return reply.status(400).send({
-                message: error.message || "Erro inesperado ao buscar edificação.",
-            });
-        }
-    }
-
-    async UpdateBuilding(
-        request: FastifyRequest<{ Params: { id: number }; Body: UpdateBuildingDTO }>,
-        reply: FastifyReply,
-    ) {
-        try {
-            const data = await this.buildingService.updateBuilding(request.params.id, request.body);
-            return reply.status(200).send({
-                message: "Edificação atualizada com sucesso!",
-                data,
-            });
-        } catch (error: any) {
-            return reply.status(400).send({
-                message: error.message || "Erro inesperado ao atualizar edificação.",
-            });
-        }
-    }
-
     async ListBuildingMaterials(_request: FastifyRequest, reply: FastifyReply) {
-        try {
-            const data = await this.buildingService.listBuildingMaterials();
-            return reply.status(200).send({ data });
-        } catch (error: any) {
-            return reply.status(400).send({
-                message: error.message || "Erro inesperado ao listar materiais.",
-            });
-        }
-    }
-
-    async UpdateBuildingMaterial(
-        request: FastifyRequest<{ Params: { code: string }; Body: UpdateBuildingMaterialDTO }>,
-        reply: FastifyReply,
-    ) {
-        try {
-            const data = await this.buildingService.updateBuildingMaterial(request.params.code, request.body);
-            return reply.status(200).send({
-                message: "Material atualizado com sucesso!",
-                data,
-            });
-        } catch (error: any) {
-            return reply.status(400).send({
-                message: error.message || "Erro inesperado ao atualizar material.",
-            });
-        }
+        return reply.status(200).send({ data: this.buildingService.listBuildingMaterials() });
     }
 
     async CalculateBuildingObstruction(
@@ -145,7 +56,7 @@ export class BuildingController {
                 data,
             });
         } catch (error: any) {
-            return reply.status(400).send({
+            return reply.status(errorStatus(error)).send({
                 message: error.message || "Erro inesperado ao calcular obstrução.",
             });
         }

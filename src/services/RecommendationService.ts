@@ -3,6 +3,7 @@ import type { EstudoPonto } from "../interface/estudo-ponto.js";
 import type { PerfilRf } from "../interface/perfil-rf.js";
 import { RecommendationUtils, type AtendimentoCalculado } from "../utils/RecommendationUtils.js";
 import { PropagationService } from "./PropagationService.js";
+import type { BuildingsAround } from "./BuildingService.js";
 import type { Coverage } from "../interface/PropagationDTO.js";
 
 export interface GerarRecomendacaoInput {
@@ -63,8 +64,8 @@ export class RecommendationService {
       );
 
     // Propagação: para cada candidato, quais pontos de interesse ele cobre (com as edificações).
+    // As edificações são consultadas sob demanda (Overture Maps) e ficam só no cache em memória.
     const params = this.propagationService.buildParameters(rf as PerfilRf);
-    await this.propagationService.prepareStudyBuildings(input.id_estudo, params);
     const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
     const propagationPoints = interestPoints.map((p) => ({
       id: String(p.id_estudo_ponto),
@@ -72,14 +73,16 @@ export class RecommendationService {
       longitude: Number(p.longitude),
     }));
     const coverage = new Map<number, AtendimentoCalculado[]>();
-    const buildingsByCandidate = new Map<number, boolean>();
+    // Só guarda as falhas da fonte, para a mancha não esperar o timeout de novo. Com sucesso, a
+    // mancha remonta o índice a partir do cache (guardar um índice por candidato pesaria na memória).
+    const failedBuildings = new Map<number, BuildingsAround>();
 
     for (const candidate of candidates) {
       const gateway = { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) };
-      const explicitBuildings = await this.propagationService.useBuildings(params, gateway.latitude, gateway.longitude);
-      buildingsByCandidate.set(candidate.id_estudo_ponto, explicitBuildings);
+      const buildings = await this.propagationService.loadBuildings(params, gateway.latitude, gateway.longitude);
+      if (buildings?.error) failedBuildings.set(candidate.id_estudo_ponto, buildings);
 
-      const links = await this.propagationService.calculateLinks(gateway, propagationPoints, params, explicitBuildings);
+      const links = await this.propagationService.calculateLinks(gateway, propagationPoints, params, buildings);
       coverage.set(
         candidate.id_estudo_ponto,
         [...links.entries()]
@@ -156,7 +159,7 @@ export class RecommendationService {
           Number(gw.candidato.longitude),
           params,
           undefined,
-          buildingsByCandidate.get(gw.candidato.id_estudo_ponto),
+          failedBuildings.get(gw.candidato.id_estudo_ponto),
         );
         await this.propagationService.saveGatewayCoverage(scenarioGateway.id_cenario_gateway, gatewayCoverage, params);
         coverageByGateway.set(gw.candidato.id_estudo_ponto, gatewayCoverage);
@@ -203,6 +206,8 @@ export class RecommendationService {
           mancha_cobertura: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.geometry ?? null,
           alcance_medio_m: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.mean_range_m ?? null,
           modelo_propagacao: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.model ?? null,
+          edificacoes_consideradas: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.buildings_considered ?? false,
+          quantidade_edificacoes: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.buildings_count ?? 0,
           atendidos: gw.atendimentos.map((a) => ({
             id_estudo_ponto: a.ponto.id_estudo_ponto,
             tipo_ativo: a.ponto.tipo_ativo,

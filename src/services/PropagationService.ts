@@ -19,7 +19,7 @@ import type {
     ScenarioCoverage,
 } from "../interface/PropagationDTO.js";
 import { PropagationUtils } from "../utils/PropagationUtils.js";
-import { BuildingService } from "./BuildingService.js";
+import { BuildingService, type BuildingsAround } from "./BuildingService.js";
 
 const DEFAULT_RAYS = 360;
 const MIN_STEP_M = 10;
@@ -40,17 +40,19 @@ export class PropagationService {
     }
 
     /**
-     * As edificações só entram no cálculo quando o perfil pede e quando a região tem
-     * edificações carregadas pelo ETL. Sem dados, o cálculo usa o Hata do ambiente do perfil.
+     * Edificações em volta do gateway, consultadas sob demanda na Overture Maps.
+     * Devolve null quando o perfil não considera edificações. Se a fonte falhar, `index` vem
+     * nulo e o cálculo usa o Hata do ambiente do perfil.
      */
-    async useBuildings(params: PropagationParameters, latitude: number, longitude: number): Promise<boolean> {
-        if (!params.considerBuildings) return false;
-        return this.buildingService.hasBuildingsNear(latitude, longitude);
-    }
-
-    /** Importa da Overture as edificações da área do estudo, se ainda não estiverem no banco. */
-    async prepareStudyBuildings(idStudy: number, params: PropagationParameters): Promise<void> {
-        if (params.considerBuildings) await this.buildingService.ensureStudyBuildings(idStudy);
+    async loadBuildings(
+        params: PropagationParameters,
+        latitude: number,
+        longitude: number,
+    ): Promise<BuildingsAround | null> {
+        if (!params.considerBuildings) return null;
+        // Alcance com o modelo de área aberta: o maior possível quando há edificações.
+        const rangeM = this.propagationUtils.MaxRangeM(params, true);
+        return this.buildingService.loadBuildingsAround(latitude, longitude, rangeM);
     }
 
     modelName(explicitBuildings: boolean, params: PropagationParameters): string {
@@ -60,13 +62,39 @@ export class PropagationService {
             : `${hata} (${params.environment})`;
     }
 
+    /**
+     * Perda de percurso e perda das edificações a `distanceM` do gateway.
+     * Fora do raio em que as edificações foram carregadas não se sabe o que há no caminho:
+     * vale no mínimo o Hata do ambiente do perfil, para a mancha não "escapar" pelo modelo
+     * de área aberta.
+     */
+    linkLossDb(
+        distanceM: number,
+        params: PropagationParameters,
+        obstacles: BuildingObstacle[],
+        buildings: BuildingsAround | null,
+    ): { pathLossDb: number; buildingsLossDb: number } {
+        if (!buildings?.index) {
+            return { pathLossDb: this.propagationUtils.PathLossDb(distanceM, params, false), buildingsLossDb: 0 };
+        }
+        const buildingsLossDb = this.propagationUtils.BuildingsLossDb(obstacles, distanceM, params);
+        let pathLossDb = this.propagationUtils.PathLossDb(distanceM, params, true);
+        if (distanceM > buildings.radiusM) {
+            const environmentLossDb = this.propagationUtils.PathLossDb(distanceM, params, false);
+            pathLossDb = Math.max(pathLossDb, environmentLossDb - buildingsLossDb);
+        }
+        return { pathLossDb, buildingsLossDb };
+    }
+
     /** Sinal do gateway em cada ponto, considerando as edificações entre eles. */
     async calculateLinks(
         gateway: { latitude: number; longitude: number },
         points: PropagationPoint[],
         params: PropagationParameters,
-        explicitBuildings: boolean,
+        buildingsAround: BuildingsAround | null,
     ): Promise<Map<string, LinkCalculation>> {
+        const buildings = buildingsAround?.index ?? null;
+        const explicitBuildings = buildings !== null;
         const maxRangeM = this.propagationUtils.MaxRangeM(params, explicitBuildings);
         const result = new Map<string, LinkCalculation>();
 
@@ -83,21 +111,22 @@ export class PropagationService {
             .filter(({ distanceM }) => distanceM <= maxRangeM);
 
         let obstaclesByLink = new Map<string, BuildingObstacle[]>();
-        if (explicitBuildings && inRange.length > 0) {
+        if (buildings && inRange.length > 0) {
             const links: LinkDTO[] = inRange.map(({ point }) => ({
                 id: point.id,
                 origin: { latitude: gateway.latitude, longitude: gateway.longitude, height_m: params.gatewayHeightM },
                 destination: { latitude: point.latitude, longitude: point.longitude, height_m: params.deviceHeightM },
             }));
-            const rows = await this.buildingService.findBuildingsOnLinks(links, params.frequencyMhz);
-            obstaclesByLink = this.buildingService.groupObstaclesByLink(rows);
+            obstaclesByLink = this.buildingService.groupObstaclesByLink(buildings.Crossings(links, params.frequencyMhz));
         }
 
         for (const { point, distanceM } of inRange) {
-            const pathLossDb = this.propagationUtils.PathLossDb(distanceM, params, explicitBuildings);
-            const buildingsLossDb = explicitBuildings
-                ? this.propagationUtils.BuildingsLossDb(obstaclesByLink.get(point.id) ?? [], distanceM, params)
-                : 0;
+            const { pathLossDb, buildingsLossDb } = this.linkLossDb(
+                distanceM,
+                params,
+                obstaclesByLink.get(point.id) ?? [],
+                buildingsAround,
+            );
             const signalDbm = this.propagationUtils.SignalLevelDbm(params, pathLossDb + buildingsLossDb);
 
             result.set(point.id, {
@@ -116,21 +145,26 @@ export class PropagationService {
      * Mancha de cobertura pelo método radial: a partir do gateway são traçados `rays` raios;
      * em cada um o sinal é calculado em passos até o primeiro ponto sem cobertura.
      * Os pontos-limite de todos os raios formam o polígono.
+     * `buildingsInput` reaproveita edificações já carregadas (undefined = carregar agora).
      */
     async buildCoverage(
         latitude: number,
         longitude: number,
         params: PropagationParameters,
         rays = DEFAULT_RAYS,
-        explicitBuildingsInput?: boolean,
+        buildingsInput?: BuildingsAround | null,
     ): Promise<Coverage> {
-        const explicitBuildings = explicitBuildingsInput ?? (await this.useBuildings(params, latitude, longitude));
+        const buildings = buildingsInput === undefined
+            ? await this.loadBuildings(params, latitude, longitude)
+            : buildingsInput;
+        const index = buildings?.index ?? null;
+        const explicitBuildings = index !== null;
         const maxRangeM = this.propagationUtils.MaxRangeM(params, explicitBuildings);
         const stepM = Math.min(MAX_STEP_M, Math.max(MIN_STEP_M, maxRangeM / STEPS_PER_RAY));
         const bearings = Array.from({ length: rays }, (_, i) => (360 * i) / rays);
 
         let obstaclesByRay = new Map<string, BuildingObstacle[]>();
-        if (explicitBuildings && maxRangeM > 0) {
+        if (index && maxRangeM > 0) {
             const links: LinkDTO[] = bearings.map((bearing) => {
                 const end = this.propagationUtils.Destination(latitude, longitude, bearing, maxRangeM);
                 return {
@@ -139,8 +173,7 @@ export class PropagationService {
                     destination: { latitude: end.latitude, longitude: end.longitude, height_m: params.deviceHeightM },
                 };
             });
-            const rows = await this.buildingService.findBuildingsOnLinks(links, params.frequencyMhz);
-            obstaclesByRay = this.buildingService.groupObstaclesByLink(rows);
+            obstaclesByRay = this.buildingService.groupObstaclesByLink(index.Crossings(links, params.frequencyMhz));
         }
 
         const reaches = bearings.map((bearing) => {
@@ -148,11 +181,8 @@ export class PropagationService {
             let reachM = 0;
 
             for (let distanceM = stepM; distanceM <= maxRangeM + 1e-6; distanceM += stepM) {
-                const buildingsLossDb = explicitBuildings
-                    ? this.propagationUtils.BuildingsLossDb(obstacles, distanceM, params)
-                    : 0;
-                const totalLossDb = this.propagationUtils.PathLossDb(distanceM, params, explicitBuildings) + buildingsLossDb;
-                const signalDbm = this.propagationUtils.SignalLevelDbm(params, totalLossDb);
+                const { pathLossDb, buildingsLossDb } = this.linkLossDb(distanceM, params, obstacles, buildings);
+                const signalDbm = this.propagationUtils.SignalLevelDbm(params, pathLossDb + buildingsLossDb);
                 if (!this.propagationUtils.IsCovered(params, signalDbm)) break;
                 reachM = distanceM;
             }
@@ -176,6 +206,9 @@ export class PropagationService {
             model: this.modelName(explicitBuildings, params),
             environment: explicitBuildings ? "rural" : params.environment,
             buildings_considered: explicitBuildings,
+            buildings_count: index?.size ?? 0,
+            buildings_radius_m: explicitBuildings ? Math.round(buildings!.radiusM) : null,
+            buildings_error: buildings?.error ?? null,
             rays,
         };
     }
@@ -191,9 +224,6 @@ export class PropagationService {
         if (!profile) throw new Error("Perfil de RF não encontrado.");
 
         const params = this.buildParameters(profile as PerfilRf, input.gateway_height_m);
-        if (params.considerBuildings) {
-            await this.buildingService.ensureBuildingsAround(input.latitude, input.longitude);
-        }
         return this.buildCoverage(input.latitude, input.longitude, params, input.rays ?? DEFAULT_RAYS);
     }
 

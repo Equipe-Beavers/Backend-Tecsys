@@ -1,37 +1,59 @@
+import type { GeoJsonMultiPolygon, PolygonRings } from "../utils/GeometryUtils.js";
+
+/** Altura: informada pela fonte, calculada pelos pavimentos ou padrão da regra de negócio. */
 export type HeightSource =
     | "INFORMADA"
     | "PAVIMENTOS"
-    | "PADRAO"
-    | "MANUAL";
+    | "PADRAO";
 
+/** Material: informado pela fonte (facade_material) ou o padrão (cimento). */
 export type MaterialSource =
     | "INFORMADO"
-    | "REGRA"
-    | "PADRAO"
-    | "MANUAL";
+    | "PADRAO";
 
-/** Edificação como sai da tabela `edificacoes` (nomes das colunas do banco). */
+/**
+ * Edificação consultada sob demanda na Overture Maps. Não é gravada no banco:
+ * fica só no cache em memória do BuildingService.
+ */
 export interface Building {
-    id_edificacao: number;
-    id_externo: string;
-    fonte: string;
+    id: string;
+    fonte: "OVERTURE";
     fonte_original: string | null;
-    versao_fonte: string | null;
+    versao_fonte: string;
     subtipo: string | null;
     classe: string | null;
     altura_m: number;
     origem_altura: HeightSource;
     pavimentos: number | null;
     largura_m: number | null;
-    comprimento_m: number | null;
+    profundidade_m: number | null;
     area_m2: number | null;
     codigo_material: string;
     nome_material: string;
     origem_material: MaterialSource;
+    material_fachada_original: string | null;
     perda_material_db: number;
     latitude: number;
     longitude: number;
-    geometria: Record<string, unknown>;
+    geometria: GeoJsonMultiPolygon;
+}
+
+/** Edificação já tratada, guardada no cache (sem a perda, que depende da frequência). */
+export interface CachedBuilding extends Omit<Building, "perda_material_db" | "geometria"> {
+    polygons: PolygonRings[];
+    bbox: BoundingBoxDTO;
+}
+
+/** Linha lida da Overture Maps (colunas do GeoParquet). */
+export interface OvertureBuildingRow {
+    id: string;
+    wkb_hex: string;
+    subtype: string | null;
+    class: string | null;
+    height: number | null;
+    num_floors: number | null;
+    facade_material: string | null;
+    fonte_original: string | null;
 }
 
 export interface ListBuildingsDTO {
@@ -44,25 +66,21 @@ export interface ListBuildingsDTO {
     format?: "json" | "geojson";
 }
 
-export interface UpdateBuildingDTO {
-    altura_m?: number;
-    codigo_material?: string;
+export interface ListBuildingsResult {
+    data: Building[];
+    total: number;
+    fonte: string;
+    versao_fonte: string;
 }
 
-/** Material como sai da tabela `materiais_construcao`. */
+/** Material de construção e a perda por parede, nas frequências de referência. */
 export interface BuildingMaterial {
     codigo: string;
     nome: string;
-    descricao: string | null;
+    descricao: string;
     perda_db_900mhz: number;
     perda_db_2400mhz: number;
     padrao: boolean;
-}
-
-export interface UpdateBuildingMaterialDTO {
-    perda_db_900mhz?: number;
-    perda_db_2400mhz?: number;
-    padrao?: boolean;
 }
 
 export interface LinkPointDTO {
@@ -83,7 +101,7 @@ export interface CalculateObstructionDTO {
     links: LinkDTO[];
 }
 
-/** Linha devolvida por `findBuildingsOnLinksQuery`. */
+/** Edificação cruzada pela linha reta de um enlace. */
 export interface BuildingOnLinkRow {
     id: string;
     id_edificacao: string;
@@ -97,7 +115,7 @@ export interface BuildingOnLinkRow {
 }
 
 export interface BuildingOnLink {
-    id_building: number;
+    id_building: string;
     height_m: number;
     line_height_m: number;
     distance_from_origin_m: number;
@@ -119,15 +137,4 @@ export interface BoundingBoxDTO {
     maxLatitude: number;
     minLongitude: number;
     maxLongitude: number;
-}
-
-export interface ImportBuildingsDTO extends BoundingBoxDTO {
-    force?: boolean;
-}
-
-export interface ImportBuildingsResult {
-    versao_fonte: string;
-    areas_processadas: number;
-    edificacoes_importadas: number;
-    ja_importada: boolean;
 }

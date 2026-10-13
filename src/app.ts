@@ -68,8 +68,7 @@ class App {
       )
     })
 
-    // BuildingController (edificações: altura, largura, comprimento e material)
-    const buildingId = { type: "integer", minimum: 1 };
+    // BuildingController (edificações sob demanda da Overture Maps: altura, largura, profundidade e material)
     const frequencyMhz = { type: "number", exclusiveMinimum: 0, maximum: 100000 };
     const linkPoint = {
       type: "object", required: ["latitude", "longitude", "height_m"], additionalProperties: false,
@@ -101,87 +100,8 @@ class App {
       );
     });
 
-    this.app.post("/import-buildings", {
-      schema: { body: {
-        type: "object", additionalProperties: false,
-        required: ["minLatitude", "maxLatitude", "minLongitude", "maxLongitude"],
-        properties: {
-          minLatitude: { type: "number", minimum: -90, maximum: 90 },
-          maxLatitude: { type: "number", minimum: -90, maximum: 90 },
-          minLongitude: { type: "number", minimum: -180, maximum: 180 },
-          maxLongitude: { type: "number", minimum: -180, maximum: 180 },
-          force: { type: "boolean" },
-        },
-      } },
-    }, async (request, reply) => {
-      await buildingController.ImportBuildings(
-        request as Parameters<BuildingController["ImportBuildings"]>[0],
-        reply
-      );
-    });
-
-    this.app.post("/import-study-buildings/:id", {
-      schema: {
-        params: { type: "object", required: ["id"], properties: { id: { type: "integer", minimum: 1 } } },
-      },
-    }, async (request, reply) => {
-      await buildingController.ImportStudyBuildings(
-        request as Parameters<BuildingController["ImportStudyBuildings"]>[0],
-        reply
-      );
-    });
-
-    this.app.get("/get-building/:id", {
-      schema: {
-        params: { type: "object", required: ["id"], properties: { id: buildingId } },
-        querystring: { type: "object", additionalProperties: false, properties: { frequencyMhz } },
-      },
-    }, async (request, reply) => {
-      await buildingController.GetBuilding(
-        request as Parameters<BuildingController["GetBuilding"]>[0],
-        reply
-      );
-    });
-
-    this.app.patch("/update-building/:id", {
-      schema: {
-        params: { type: "object", required: ["id"], properties: { id: buildingId } },
-        body: {
-          type: "object", minProperties: 1, additionalProperties: false,
-          properties: {
-            altura_m: { type: "number", exclusiveMinimum: 0, maximum: 1000 },
-            codigo_material: { type: "string", minLength: 1, maxLength: 30 },
-          },
-        },
-      },
-    }, async (request, reply) => {
-      await buildingController.UpdateBuilding(
-        request as Parameters<BuildingController["UpdateBuilding"]>[0],
-        reply
-      );
-    });
-
     this.app.get("/list-building-materials", async (request, reply) => {
       await buildingController.ListBuildingMaterials(request, reply);
-    });
-
-    this.app.patch("/update-building-material/:code", {
-      schema: {
-        params: { type: "object", required: ["code"], properties: { code: { type: "string", minLength: 1, maxLength: 30 } } },
-        body: {
-          type: "object", minProperties: 1, additionalProperties: false,
-          properties: {
-            perda_db_900mhz: { type: "number", minimum: 0, maximum: 100 },
-            perda_db_2400mhz: { type: "number", minimum: 0, maximum: 100 },
-            padrao: { type: "boolean", const: true },
-          },
-        },
-      },
-    }, async (request, reply) => {
-      await buildingController.UpdateBuildingMaterial(
-        request as Parameters<BuildingController["UpdateBuildingMaterial"]>[0],
-        reply
-      );
     });
 
     this.app.post("/calculate-building-obstruction", {

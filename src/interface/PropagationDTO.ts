@@ -52,6 +52,12 @@ export interface Coverage {
     model: string;
     environment: PropagationEnvironment;
     buildings_considered: boolean;
+    /** Edificações da Overture Maps usadas no cálculo. */
+    buildings_count: number;
+    /** Raio em volta do gateway em que as edificações foram consideradas. */
+    buildings_radius_m: number | null;
+    /** Por que as edificações não entraram (fonte indisponível, por exemplo). */
+    buildings_error: string | null;
     rays: number;
 }
 

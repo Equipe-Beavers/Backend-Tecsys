@@ -34,6 +34,18 @@ describe("GET /list-buildings", () => {
     });
 });
 
+describe("GET /list-building-materials", () => {
+    it("lista os materiais com cimento como padrão", async () => {
+        const app = createTestApp();
+        const response = await app.inject({ method: "GET", url: "/list-building-materials" });
+        expect(response.statusCode).toBe(200);
+        const padrao = response.json().data.filter((m: { padrao: boolean }) => m.padrao);
+        expect(padrao).toHaveLength(1);
+        expect(padrao[0].codigo).toBe("CIMENTO");
+        await app.close();
+    });
+});
+
 describe("POST /calculate-building-obstruction", () => {
     it("exige a frequência", async () => {
         const app = createTestApp();
@@ -64,19 +76,6 @@ describe("POST /calculate-building-obstruction", () => {
     });
 });
 
-describe("PATCH /update-building-material/:code", () => {
-    it("rejeita corpo vazio", async () => {
-        const app = createTestApp();
-        const response = await app.inject({
-            method: "PATCH",
-            url: "/update-building-material/CONCRETO",
-            payload: {},
-        });
-        expect(response.statusCode).toBe(400);
-        await app.close();
-    });
-});
-
 describe("GET /get-scenario-coverage/:id", () => {
     it("rejeita id inválido", async () => {
         const app = createTestApp();
@@ -86,11 +85,13 @@ describe("GET /get-scenario-coverage/:id", () => {
     });
 });
 
-describe("POST /import-buildings", () => {
-    it("exige a área completa", async () => {
+describe("rotas que gravavam edificações no banco", () => {
+    it("não existem mais", async () => {
         const app = createTestApp();
-        const response = await app.inject({ method: "POST", url: "/import-buildings", payload: { minLatitude: -23.2 } });
-        expect(response.statusCode).toBe(400);
+        for (const [method, url] of [["POST", "/import-buildings"], ["PATCH", "/update-building/1"], ["PATCH", "/update-building-material/CIMENTO"]] as const) {
+            const response = await app.inject({ method, url, payload: {} });
+            expect(response.statusCode).toBe(404);
+        }
         await app.close();
     });
 });
