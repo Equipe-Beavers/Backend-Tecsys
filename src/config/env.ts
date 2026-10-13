@@ -15,7 +15,7 @@ export const env = {
         password: required("DB_PASSWORD"),
         host: process.env.DB_HOST ?? "localhost",
         port: Number(process.env.DB_PORT ?? 5432),
-        ssl: process.env.DB_SSL?.toLowerCase() === "true",
+        ssl: process.env.DB_SSL?.toLowerCase() === "true" || !!process.env.DB_SSLMODE,
     },
     port: Number(process.env.PORT ?? 3000),
 };

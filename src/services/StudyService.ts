@@ -1,73 +1,90 @@
-import { supabase } from "../database/supabase.js";
-import type { CriarEstudoPonto, EstudoPonto } from "../interface/estudo-ponto.js";
+import { pool } from "../database/pool.js";
+import type {
+  CriarEstudoPonto,
+  EstudoPonto,
+} from "../interface/estudo-ponto.js";
 import type { CriarEstudo, Estudo } from "../interface/estudo.js";
 import { ValidationService } from "./ValidationService.js";
 
 export class StudyService {
-    private validationService: ValidationService;
+  private validationService: ValidationService;
 
-    constructor() {
-        this.validationService = new ValidationService();
-    }
+  constructor() {
+    this.validationService = new ValidationService();
+  }
 
-    async createStudy(studyData: CriarEstudo) {
-        const estudo = {
-        id_usuario: studyData.id_usuario,
-        tipo_delimitacao: studyData.tipo_delimitacao,
-        uf: studyData.uf ?? null,
-        municipio: studyData.municipio ?? null,
-        bairro: studyData.bairro ?? null,
-        geom: studyData.geom ?? null,
-        nome: studyData.nome.trim(),
-        descricao: studyData.descricao?.trim() || null,
-        distribuidora: studyData.distribuidora?.trim() || null,
-        versao_bdgd: studyData.versao_bdgd?.trim() || null,
-        nome_base_externa: studyData.nome_base_externa?.trim() || null,
-        tipos_ativo_selecionados: studyData.tipos_ativo_selecionados ?? null,
-        status: studyData.status ?? "AGUARDANDO_SELECAO",
-        };
+  async createStudy(studyData: CriarEstudo): Promise<Estudo> {
+    const estudo = [
+      studyData.id_usuario,
+      studyData.tipo_delimitacao,
+      studyData.uf ?? null,
+      studyData.municipio ?? null,
+      studyData.bairro ?? null,
+      studyData.geom ? JSON.stringify(studyData.geom) : null,
+      studyData.nome.trim(),
+      studyData.descricao?.trim() || null,
+      studyData.distribuidora?.trim() || null,
+      studyData.versao_bdgd?.trim() || null,
+      studyData.nome_base_externa?.trim() || null,
+      studyData.tipos_ativo_selecionados ?? null,
+      studyData.status ?? "AGUARDANDO_SELECAO",
+    ];
 
-        const { data, error } = await supabase.from("estudos")
-        .insert(estudo).select().single();
+    const query = `
+      INSERT INTO estudos 
+      (id_usuario, tipo_delimitacao, uf, municipio, bairro, geom, nome, descricao, distribuidora, versao_bdgd, nome_base_externa, tipos_ativo_selecionados, status)
+      VALUES (
+        $1, $2, $3, $4, $5, 
+        CASE WHEN $6::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($6) END, 
+        $7, $8, $9, $10, $11, $12, $13
+      ) RETURNING *;
+    `;
 
-        if (error) throw new Error(`Erro ao criar estudo: ${error.message}.`);
-        return data as Estudo;
-    }
+    const result = await pool.query(query, estudo);
 
-    async createStudyPoint(studyData: CriarEstudoPonto): Promise<EstudoPonto> {
-        await this.validationService.verifyRecord(
-            "estudos",
-            "id_estudo",
-            studyData.id_estudo,
-            "Estudo"
-        );
+    if (!result.rows[0]) throw new Error("Erro ao criar estudo.");
+    return result.rows[0] as Estudo;
+  }
 
-        const geom = {
-            type: "Point",
-            coordinates: [
-                studyData.longitude,
-                studyData.latitude
-            ]
-        };
+  async createStudyPoint(studyData: CriarEstudoPonto): Promise<EstudoPonto> {
+    await this.validationService.verifyRecord(
+      "estudos",
+      "id_estudo",
+      studyData.id_estudo,
+      "Estudo",
+    );
 
-        const ponto = {
-            id_estudo: studyData.id_estudo,
-            origem: studyData.origem,
-            id_ativo_bdgd: studyData.id_ativo_bdgd ?? null,
-            tipo_ativo: studyData.tipo_ativo ?? null,
-            rotulo: studyData.rotulo ?? null,
-            papel: studyData.papel,
-            prioridade: studyData.prioridade ?? null,
-            latitude: studyData.latitude,
-            longitude: studyData.longitude,
-            atributos: studyData.atributos ?? null,
-            geom
-        }
+    const geom = {
+      type: "Point",
+      coordinates: [studyData.longitude, studyData.latitude],
+    };
 
-        const { data, error } = await supabase.from("estudo_pontos")
-        .insert(ponto).select().single();
+    const ponto = [
+      studyData.id_estudo,
+      studyData.origem,
+      studyData.id_ativo_bdgd ?? null,
+      studyData.tipo_ativo ?? null,
+      studyData.rotulo ?? null,
+      studyData.papel,
+      studyData.prioridade ?? null,
+      studyData.latitude,
+      studyData.longitude,
+      studyData.atributos ?? null,
+      JSON.stringify(geom),
+    ];
 
-        if (error) throw new Error(`Erro ao criar ponto do estudo: ${error.message}.`);
-        return data as EstudoPonto;
-    }
+    const query = `
+      INSERT INTO estudo_pontos 
+      (id_estudo, origem, id_ativo_bdgd, tipo_ativo, rotulo, papel, prioridade, latitude, longitude, atributos, geom)
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
+        ST_GeomFromGeoJSON($11)
+      ) RETURNING *;
+    `;
+    
+    const result = await pool.query(query, ponto);
+
+    if (!result.rows[0]) throw new Error("Não foi possível criar o ponto de estudo.");
+    return result.rows[0] as EstudoPonto;
+  }
 }

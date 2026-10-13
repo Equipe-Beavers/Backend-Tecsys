@@ -1,4 +1,4 @@
-import type { AssetFilters, AssetType } from "../../modules/repository/ActiveRepository.js";
+import type { AssetFilters, AssetType } from "../../interface/active-repository.js";
 
 function tipUnidExpression(alias: string): string {
     return `CASE
