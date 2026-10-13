@@ -30,3 +30,8 @@ Thumbs.db
 
 coverage/
 .nyc_output/
+# Remote credentials stay private; only templates may be committed.
+.env.*
+!.env.example
+!.env.local.example
+tecsys_backup.dump

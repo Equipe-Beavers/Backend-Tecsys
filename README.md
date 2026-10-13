@@ -1,97 +1,51 @@
 # Backend Tecsys
 
-API backend do projeto Tecsys, desenvolvida em TypeScript com Fastify e PostgreSQL.
+API em TypeScript com Fastify e PostgreSQL.
 
-## Pré-requisitos
+- [Contrato do CRUD de critérios de instalação](docs/InstallCriteriaApi.md)
+- [Banco local, dados fictícios e testes dos critérios](docs/LocalCriteriaDatabase.md)
 
-- Node.js instalado, preferencialmente versão 20 ou superior;
-- npm;
-- um projeto no Supabase ou uma instalação local do PostgreSQL;
-- credenciais de acesso ao banco de dados.
+## Desenvolvimento local dos critérios
 
-## Como rodar do zero
+Requisitos: Node.js (20 ou superior, com suporte a `--import`), npm e Docker Compose. Use o repositório principal com `DER - Geomash.sql` na raiz; ele é a única referência válida. Ignore `backend/database/schema.sql`.
 
-### 1. Clonar o repositório
-
-```bash
-git clone https://github.com/Equipe-Beavers/Backend-Tecsys.git
-cd Backend-Tecsys
-```
-
-### 2. Instalar as dependências
+Na pasta `backend`:
 
 ```bash
 npm install
 ```
 
-### 3. Criar o banco de dados
-
-O schema das tabelas está no arquivo [`database/schema.sql`](database/schema.sql). Ele cria a extensão PostGIS, as tabelas, os relacionamentos e os índices necessários.
-
-O schema não inclui as tabelas `distribuidoras` e `posicoes_geograficas`, usadas pelos endpoints de regiões para consultar o dataset BDGD. Essas tabelas e seus dados devem ser importados separadamente no banco escolhido.
-
-#### Opção A: Supabase
-
-1. Crie ou abra um projeto em [supabase.com](https://supabase.com/).
-2. No painel do projeto, acesse **SQL Editor** e crie uma nova query.
-3. Copie o conteúdo de [`database/schema.sql`](database/schema.sql), cole na query e clique em **Run**.
-4. Confirme em **Table Editor** se as tabelas foram criadas.
-
-Para obter os dados da conexão PostgreSQL, acesse **Connect** no projeto Supabase e escolha o método de conexão recomendado para sua rede. Serão necessários host, porta, nome do banco, usuário e senha.
-
-#### Opção B: PostgreSQL local
-
-1. Instale o PostgreSQL com a extensão PostGIS.
-2. Crie um banco, por exemplo `tecsys_data`.
-3. Execute o schema usando `psql`:
+Se `.env.local` ainda não existir, copie `.env.local.example` para `.env.local`. Preserve o `.env` existente, que contém as configurações da AWS.
 
 ```bash
-psql -U postgres -d tecsys_data -f database/schema.sql
-```
-
-Se o PostGIS não estiver instalado, a criação das colunas `GEOMETRY` falhará. Instale o pacote PostGIS compatível com sua versão do PostgreSQL antes de executar o arquivo.
-
-### 4. Configurar as variáveis de ambiente
-
-Crie um arquivo `.env` na raiz do projeto. Para usar o PostgreSQL local, utilize:
-
-```env
-DB_NAME=tecsys_data
-DB_USER=postgres
-DB_PASSWORD=sua_senha_do_postgres
-DB_HOST=localhost
-DB_PORT=5432
-DB_SSL=false
-PORT=3000
-```
-
-Para usar o banco PostgreSQL do Supabase, substitua `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` e `DB_PORT` pelos valores exibidos em **Connect** e use SSL:
-
-```env
-DB_NAME=postgres
-DB_USER=postgres.seu_project_ref
-DB_PASSWORD=sua_senha_do_supabase
-DB_HOST=seu_host_do_supabase
-DB_PORT=5432
-DB_SSL=true
-PORT=3000
-```
-
-O módulo de regiões também usa o SDK do Supabase. Inclua no `.env` os valores de **Project URL** e **service_role key**, encontrados em **Project Settings > API**:
-
-```env
-SUPABASE_URL=https://seu_project_ref.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
-```
-
-As variáveis obrigatórias para a conexão PostgreSQL são `DB_NAME`, `DB_USER` e `DB_PASSWORD`. Para as consultas que usam o SDK, `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` também são obrigatórias. Nunca publique o arquivo `.env` nem a `service_role key` no GitHub.
-
-`DB_HOST`, `DB_PORT`, `DB_SSL` e `PORT` são opcionais e assumem, respectivamente, `localhost`, `5432`, `false` e `3000`.
-
-### 5. Iniciar em modo de desenvolvimento
-
-```bash
+npm run db:local:up
 npm run dev
 ```
 
-O servidor ficará disponível em `http://localhost:3000` e será reiniciado automaticamente quando os arquivos TypeScript forem alterados.
+`npm run dev` inicia o modo local, equivalente a `npm run dev:local`. O banco fica em `127.0.0.1:5433`, e a API em `http://localhost:3001`. O DER e os dados fictícios são aplicados automaticamente na primeira criação do volume. O Supabase fica bloqueado nesse modo.
+
+O CRUD de critérios utiliza SQL parametrizado em `src/database/queries.ts`, executado por `src/database/pool.ts`. Não depende do SDK nem das credenciais do Supabase.
+
+## Configuração AWS preservada
+
+O arquivo `.env` continua guardando `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL` e `PORT` do ambiente remoto. Ele não foi sobrescrito por dados locais.
+
+Somente quando desejar acessar a AWS, utilize explicitamente:
+
+```bash
+npm run dev:aws
+```
+
+Esse comando carrega `.env` e habilita acesso PostgreSQL remoto. A execução padrão bloqueia hosts remotos sem `ALLOW_REMOTE_DATABASE=true`. Ao iniciar o build com `npm start` em um ambiente remoto, forneça essa autorização explicitamente nas variáveis de implantação.
+
+Outros módulos da equipe ainda podem utilizar `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Eles não foram migrados nesta tarefa e não devem ser testados através do modo local de critérios, que bloqueia o SDK. Seus valores existentes foram preservados. `.env` e `.env.local` permanecem ignorados pelo Git; somente o exemplo local com credenciais fictícias pode ser versionado.
+
+## Verificação dos critérios
+
+```bash
+npm run build
+npm test -- test/InstallCriterion.test.ts test/LocalDatabaseConfig.test.ts
+npm run test:criteria:local
+```
+
+O último comando requer o contêiner local iniciado. Não acessa a AWS, não acessa Supabase e remove seus registros temporários ao finalizar.
