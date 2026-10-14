@@ -73,6 +73,28 @@ try {
   const second = await app.inject('/list-install-criteria?id_usuario=1&page=2&limit=1');
   check(first.json().data.length === 1 && second.json().data.length === 1 && first.json().data[0].id_criterio_instalacao !== second.json().data[0].id_criterio_instalacao, 'Paginação SQL');
 
+  const invalidRelief = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
+    payload: { relevo: { altitude_minima_m: 900, altitude_maxima_m: 100 } } });
+  check(invalidRelief.statusCode === 400, 'Intervalo inválido rejeitado');
+  const conflictingTypes = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
+    payload: { tipos_elementos_proibidos: ['Torres'] } });
+  check(conflictingTypes.statusCode === 400, 'PATCH compara aliases com os tipos já persistidos');
+  const stillValid = await pool.query(getInstallCriterionQuery, [criterion.id_criterio_instalacao]);
+  assert.deepEqual(stillValid.rows[0].tipos_elementos_proibidos, payload.tipos_elementos_proibidos); checks++;
+  assert.deepEqual(stillValid.rows[0].relevo, { altitude_maxima_m: 900 }); checks++;
+
+  const clearTypes = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
+    payload: { tipos_elementos_permitidos: [], tipos_elementos_proibidos: [] } });
+  check(clearTypes.statusCode === 200, 'Alteração conjunta das seleções');
+  const concurrent = await Promise.all([
+    app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`, payload: { tipos_elementos_permitidos: ['TORRE'] } }),
+    app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`, payload: { tipos_elementos_proibidos: ['TORRES'] } }),
+  ]);
+  assert.deepEqual(concurrent.map(response => response.statusCode).sort(), [200, 400]); checks++;
+  const finalTypes = await pool.query(getInstallCriterionQuery, [criterion.id_criterio_instalacao]);
+  check(finalTypes.rows[0].tipos_elementos_permitidos.length === 0 || finalTypes.rows[0].tipos_elementos_proibidos.length === 0,
+    'Atualizações simultâneas não deixam seleções conflitantes');
+
   const referenced = await app.inject({ method: 'DELETE', url: '/delete-install-criterion/3' });
   check(referenced.statusCode === 409, 'Critério referenciado por estudo não pode ser excluído');
   const remove = await app.inject({ method: 'DELETE', url: `/delete-install-criterion/${criterion.id_criterio_instalacao}` });

@@ -111,3 +111,9 @@ export const deleteRFProfileQuery = `
   DELETE FROM perfis_rf
   WHERE id_perfil_rf = $1
   RETURNING id_perfil_rf`;
+
+export const lockInstallCriterionQuery = `SELECT tipos_elementos_permitidos, tipos_elementos_proibidos
+  FROM criterios_instalacao WHERE id_criterio_instalacao = $1 FOR UPDATE`;
+export const beginCriterionTransactionQuery = 'BEGIN';
+export const commitCriterionTransactionQuery = 'COMMIT';
+export const rollbackCriterionTransactionQuery = 'ROLLBACK';

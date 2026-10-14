@@ -137,3 +137,21 @@ npm run test:criteria:local
 ```
 
 Os testes unitários exercitam as rotas Fastify e substituem o pool PostgreSQL por resultados controlados. Os testes de configuração verificam o bloqueio de acesso remoto sem abrir conexão. O comando `test:criteria:local` executa o CRUD no banco local real com o DER aprovado, incluindo a proteção de exclusão por estudo, e remove seus próprios registros temporários ao finalizar. Não valida o ambiente AWS.
+
+## Validação semântica das restrições (14/10/2026)
+
+As rotas de criação e edição retornam HTTP 400 para restrições inválidas antes de gravar:
+
+- `relevo`, `vegetacoes`, `edificacoes` e `antenas` devem ser objetos ou `null`.
+- Campos numéricos conhecidos devem conter números finitos, não strings. Distâncias, raios e altura de edificações não podem ser negativos. Altitudes podem ser negativas.
+- Altitude mínima não pode ultrapassar a máxima quando ambas forem informadas. Declividade: 0 a 90 graus.
+- Quantidades: inteiros positivos até 2147483647, conforme a validação já utilizada no formulário.
+- Indicador de conflito de frequência: booleano ou `null`.
+- Vegetação permitida/proibida: listas de textos não vazios ou `null`, sem interseção após normalização de caixa/acentos.
+- Listas de tipos de ativos não podem se contradizer. Aliases históricos (ex.: TORRE/TORRES) são equivalentes para comparação; a validação não reescreve registros antigos.
+
+O PATCH mantém sua semântica: campo de primeiro nível omitido é preservado; seção JSONB enviada substitui a seção inteira (não é mesclagem recursiva). As regras internas são aplicadas à seção enviada. Na alteração de qualquer lista de ativos, o serviço lê a outra lista com `SELECT FOR UPDATE` e grava na mesma transação. Alterações concorrentes não conseguem introduzir um conflito entre as listas.
+
+Compatibilidade: propriedades extras dentro dos objetos JSONB são preservadas. Seleções históricas de ativos representadas como objetos continuam aceitas como conteúdo opaco; não é possível inferir conflitos dessas estruturas sem um contrato adicional. A checagem de conflito de ativos cobre as listas de strings utilizadas pela interface atual. Não foram criados novos CHECKs no banco; gravações SQL fora da API não passam por estas validações.
+
+Frontend: mostra o erro sem descartar o formulário e impede envio de intervalos/conflitos identificados localmente. A API permanece responsável pela validação de chamadas externas.
