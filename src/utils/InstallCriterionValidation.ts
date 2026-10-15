@@ -48,6 +48,10 @@ export class InstallCriterionValidation {
   }
 
   Validate(input: Partial<CreateInstallCriterionDTO>): void {
+    if (input.distancia_minima_ativos_m != null && input.distancia_maxima_ativos_m != null
+      && input.distancia_minima_ativos_m > input.distancia_maxima_ativos_m) {
+      this.fail("A distância mínima não pode ultrapassar a distância máxima.");
+    }
     this.disjoint(
       this.list(input.tipos_elementos_permitidos, "Ativos permitidos", true),
       this.list(input.tipos_elementos_proibidos, "Ativos bloqueados", true), "Ativos",

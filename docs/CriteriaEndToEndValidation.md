@@ -42,7 +42,7 @@ O banco local observado contém também `locais_autorizados`, `locais_obrigatori
 
 Pendências:
 
-1. O RangeSlider solicitado pela PO exige distância mínima e máxima. Atualmente formulário, API e novo schema mantêm apenas `distancia_maxima_ativos_m`.
+1. Resolvido em 14/10/2026: RangeSlider, API e novo schema agora usam distância mínima e máxima. A migração 003 foi aplicada ao banco local. O teste verifica seleção de 500–1500 m, persistência e reabertura do intervalo.
 2. O protótipo de antenas mostra distância mínima; o formulário/payload atual usa `distancia_maxima_m`. É necessário alinhar essa semântica antes de usar as regras em cálculos.
 3. JSONB não define sozinho o formato interno. Em 14/10/2026 foram adicionadas validações de tipos, limites, intervalos e conflitos na API e no formulário. Propriedades extras são preservadas por compatibilidade; seleções históricas de ativos em objetos opacos não têm conflitos inferidos. Consulte InstallCriteriaApi.md.
 4. `novo_schema.sql` exige PostGIS previamente habilitado e não é uma migração para um banco já existente.

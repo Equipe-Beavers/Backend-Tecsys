@@ -106,6 +106,7 @@ export class App {
       tipos_elementos_permitidos: {},
       tipos_elementos_proibidos: {},
       requer_alimentacao_eletrica: { type: ["boolean", "null"] },
+      distancia_minima_ativos_m: { type: ["number", "null"], minimum: 0, maximum: 9999999999.99 },
       distancia_maxima_ativos_m: { type: ["number", "null"], minimum: 0, maximum: 9999999999.99 },
       limite_gateways: { type: ["integer", "null"], minimum: 1, maximum: 2147483647 },
       relevo: {},

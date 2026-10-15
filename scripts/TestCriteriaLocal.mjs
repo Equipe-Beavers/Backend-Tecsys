@@ -58,7 +58,20 @@ try {
 
   const invalidField = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
     payload: { distancia_minima_ativos_m: 1000 } });
-  check(invalidField.statusCode === 400, 'PATCH rejeita distância mínima ausente do schema');
+  check(invalidField.statusCode === 400, 'PATCH rejeita mínimo maior que o máximo persistido');
+
+  const range = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
+    payload: { distancia_minima_ativos_m: 500, distancia_maxima_ativos_m: 2500 } });
+  check(range.statusCode === 200 && range.json().data.distancia_minima_ativos_m === 500, 'Intervalo persistido e retornado como número');
+  const invalidMaximum = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
+    payload: { distancia_maxima_ativos_m: 100 } });
+  check(invalidMaximum.statusCode === 400, 'CHECK protege PATCH somente do máximo');
+  const storedRange = await pool.query(getInstallCriterionQuery, [criterion.id_criterio_instalacao]);
+  check(Number(storedRange.rows[0].distancia_minima_ativos_m) === 500 && Number(storedRange.rows[0].distancia_maxima_ativos_m) === 2500,
+    'Intervalo permanece inalterado após erro');
+  const clearMinimum = await app.inject({ method: 'PATCH', url: `/update-install-criterion/${criterion.id_criterio_instalacao}`,
+    payload: { distancia_minima_ativos_m: null } });
+  check(clearMinimum.statusCode === 200 && clearMinimum.json().data.distancia_minima_ativos_m === null, 'Mínimo opcional pode ser limpo');
 
   const invalidUser = await app.inject({ method: 'POST', url: '/create-install-criterion', payload: { id_usuario: 9007199254740991, nome: 'Usuário inexistente' } });
   check(invalidUser.statusCode === 400, 'FK de usuário no INSERT retorna 400');

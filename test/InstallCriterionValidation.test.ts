@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn(), release: vi.fn(
 vi.mock('../src/database/pool.js', () => ({ pool: db }));
 vi.mock('../src/database/supabase.js', () => ({ supabase: {} }));
 const invalid = [
+  { distancia_minima_ativos_m: 500, distancia_maxima_ativos_m: 100 },
   { relevo: [] },
   { relevo: { altitude_minima_m: 500, altitude_maxima_m: 100 } },
   { relevo: { declividade_maxima_graus: 91 } },

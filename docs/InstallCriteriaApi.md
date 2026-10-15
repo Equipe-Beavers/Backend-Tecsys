@@ -39,6 +39,7 @@ Controllers e Services usam nomes em inglês; as propriedades JSON mantêm os no
 | `tipos_elementos_permitidos` | Opcional | JSON |
 | `tipos_elementos_proibidos` | Opcional | JSON |
 | `requer_alimentacao_eletrica` | Opcional | Booleano ou `null` |
+| `distancia_minima_ativos_m` | Opcional | Número não negativo ou `null`; não pode ultrapassar a máxima quando ambas existirem |
 | `distancia_maxima_ativos_m` | Opcional | Número entre 0 e 9.999.999.999,99, ou `null`; persistido como decimal(12,2) |
 | `limite_gateways` | Opcional | Inteiro de 1 a 2.147.483.647, ou `null` |
 | `relevo` | Opcional | JSONB ou `null`; a interface usa `altitude_minima_m`, `altitude_maxima_m` e `declividade_maxima_graus` |
@@ -116,7 +117,7 @@ Os erros de negócio retornam `{ message }`. A validação de schema usa o forma
 
 ## Banco e integração
 
-Use o schema efetivamente instalado no banco local. Esta API não exige a coluna `distancia_minima_ativos_m`; a distância é salva somente em `distancia_maxima_ativos_m`. Nenhuma migração é executada pela interface.
+O CRUD exige `distancia_minima_ativos_m` e `distancia_maxima_ativos_m`. Para bancos existentes, aplique `database/migrations/003-install-criterion-min-distance.sql` antes de iniciar esta versão da API. Ela adiciona a coluna mínima opcional e o CHECK de ordem dos limites, sem preencher ou excluir valores antigos. O novo_schema.sql já contém a coluna e o CHECK. Nenhuma migração é executada pela interface.
 
 A exclusão depende da integridade referencial do banco. No novo modelo deve existir a chave estrangeira de `estudos.id_criterio_instalacao` para `criterios_instalacao.id_criterio_instalacao`, sem exclusão em cascata. A violação de FK é convertida em 409; um banco sem essa relação não oferece essa proteção.
 
@@ -155,3 +156,9 @@ O PATCH mantém sua semântica: campo de primeiro nível omitido é preservado; 
 Compatibilidade: propriedades extras dentro dos objetos JSONB são preservadas. Seleções históricas de ativos representadas como objetos continuam aceitas como conteúdo opaco; não é possível inferir conflitos dessas estruturas sem um contrato adicional. A checagem de conflito de ativos cobre as listas de strings utilizadas pela interface atual. Não foram criados novos CHECKs no banco; gravações SQL fora da API não passam por estas validações.
 
 Frontend: mostra o erro sem descartar o formulário e impede envio de intervalos/conflitos identificados localmente. A API permanece responsável pela validação de chamadas externas.
+
+
+### Intervalo de distância aos ativos
+
+POST e PATCH aceitam os dois limites em metros. Exemplo: `{"distancia_minima_ativos_m":500,"distancia_maxima_ativos_m":2500}`.
+Omissão em PATCH preserva o limite anterior; `null` remove somente esse limite. A API valida o par enviado e a constraint `criterios_instalacao_distancias_validas` valida o resultado persistido de atualizações parciais, retornando HTTP 400 em caso de intervalo invertido. Registros antigos podem manter mínima nula. Nenhuma atualização em AWS foi executada.

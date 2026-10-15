@@ -4,7 +4,7 @@ import { InstallCriterionError } from "./InstallCriterionError.js";
 export class InstallCriterionUtils {
   private readonly fields = [
     "id_usuario", "nome", "tipos_elementos_permitidos", "tipos_elementos_proibidos",
-    "requer_alimentacao_eletrica", "distancia_maxima_ativos_m", "limite_gateways",
+    "requer_alimentacao_eletrica", "distancia_minima_ativos_m", "distancia_maxima_ativos_m", "limite_gateways",
     "relevo", "vegetacoes", "edificacoes", "antenas",
   ] as const;
 
@@ -27,6 +27,7 @@ export class InstallCriterionUtils {
       ...row,
       id_criterio_instalacao: id,
       id_usuario: userId,
+      distancia_minima_ativos_m: row.distancia_minima_ativos_m == null ? null : Number(row.distancia_minima_ativos_m),
       distancia_maxima_ativos_m: row.distancia_maxima_ativos_m == null ? null : Number(row.distancia_maxima_ativos_m),
       criado_em: row.criado_em instanceof Date ? row.criado_em.toISOString() : row.criado_em,
       atualizado_em: row.atualizado_em instanceof Date ? row.atualizado_em.toISOString() : row.atualizado_em,
@@ -34,6 +35,10 @@ export class InstallCriterionUtils {
   }
 
   RethrowDatabaseError(error: unknown, deleting = false): never {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "23514"
+      && "constraint" in error && error.constraint === "criterios_instalacao_distancias_validas") {
+      throw new InstallCriterionError(400, "A distância mínima não pode ultrapassar a distância máxima.");
+    }
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23503") {
       throw new InstallCriterionError(
         deleting ? 409 : 400,

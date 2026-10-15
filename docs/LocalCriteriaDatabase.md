@@ -50,7 +50,7 @@ docker compose -f compose.criteria.local.yml exec -T criteria-db psql -U geomash
 docker compose -f compose.criteria.local.yml exec -T criteria-db psql -U geomash_local -d geomash_criteria_test < database/migrations/005-install-criterion-json-sections.sql
 ```
 
-Essas migrações mantêm compatível apenas o contêiner de testes baseado no DER legado. Para outros bancos, não aplique automaticamente as migrações 003/004: o CRUD atual requer as colunas listadas em `criterios_instalacao` no schema usado pelo ambiente e não depende de `distancia_minima_ativos_m`.
+Essas migrações mantêm compatível apenas o contêiner de testes baseado no DER legado. Para bancos existentes que ainda não possuem distância mínima, a migração 003 é necessária para esta versão do CRUD. A migração 004 é independente e destrutiva: não a aplique sem revisar os dados antigos de locais. O novo_schema.sql atualizado já inclui os dois limites de distância e a constraint.
 
 ## Dados de teste
 
