@@ -50,11 +50,80 @@ export class App {
     });
 
     // ROTAS DE ESTUDO E RECOMENDAÇÃO
-    this.app.post("/create-study", async (request, reply) => {
+    const studyId = { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
+    const optionalStudyText = (maxLength: number) => ({ type: ["string", "null"], maxLength });
+    const studySchema = { body: {
+      type: "object",
+      required: ["id_usuario", "id_perfil_rf", "id_criterio_instalacao", "tipo_delimitacao", "nome"],
+      additionalProperties: false,
+      properties: {
+        id_usuario: studyId,
+        id_perfil_rf: studyId,
+        id_criterio_instalacao: studyId,
+        tipo_delimitacao: { type: "string", enum: ["desenho", "selecao", "mancha"] },
+        nome: { type: "string", minLength: 1, maxLength: 150, pattern: "\\S" },
+        descricao: { type: ["string", "null"] },
+        uf: { type: ["string", "null"], minLength: 2, maxLength: 2 },
+        municipio: optionalStudyText(120),
+        bairro: optionalStudyText(120),
+        distribuidora: optionalStudyText(150),
+        versao_bdgd: optionalStudyText(120),
+        nome_base_externa: optionalStudyText(150),
+        geom: { type: ["object", "null"] },
+        tipos_ativo_selecionados: { type: ["array", "null"], items: {
+          type: "object", required: ["tipo_ativo", "papel", "quantidade"], additionalProperties: false,
+          properties: {
+            tipo_ativo: { type: "string", minLength: 1 },
+            papel: { type: "string", enum: ["candidato", "interesse", "ambos"] },
+            quantidade: { type: "integer", minimum: 0 },
+          },
+        } },
+        status: { type: "string", enum: ["AGUARDANDO_SELECAO", "DEFINITIVO", "CRIANDO_CENARIO", "CENARIO_EM_RASCUNHO", "EM_COMPARACAO"] },
+      },
+    } };
+    this.app.get("/estudos", { schema: { querystring: {
+      type: "object", additionalProperties: false,
+      properties: { id_usuario: studyId },
+    } } }, async (request, reply) => {
+      return studyController.ListStudies(
+        request as Parameters<StudyController["ListStudies"]>[0], reply,
+      );
+    });
+    this.app.post("/estudos", { schema: studySchema }, async (request, reply) => {
+      return studyController.CreateStudy(
+        request as Parameters<StudyController["CreateStudy"]>[0], reply,
+      );
+    });
+    this.app.post("/create-study", { schema: studySchema }, async (request, reply) => {
       await studyController.CreateStudy(
         request as Parameters<StudyController["CreateStudy"]>[0],
         reply,
       );
+    });
+
+    const studyParams = {
+      type: "object", required: ["id"], additionalProperties: false,
+      properties: { id: studyId },
+    };
+    this.app.get("/estudos/:id", { schema: { params: studyParams } }, async (request, reply) => {
+      return studyController.GetStudy(request as Parameters<StudyController["GetStudy"]>[0], reply);
+    });
+    this.app.patch("/estudos/:id", { schema: { params: studyParams, body: {
+      type: "object", minProperties: 1, additionalProperties: false,
+      properties: {
+        nome: studySchema.body.properties.nome,
+        descricao: studySchema.body.properties.descricao,
+        uf: studySchema.body.properties.uf,
+        municipio: studySchema.body.properties.municipio,
+        bairro: studySchema.body.properties.bairro,
+        id_perfil_rf: studyId,
+        id_criterio_instalacao: studyId,
+      },
+    } } }, async (request, reply) => {
+      return studyController.UpdateStudy(request as Parameters<StudyController["UpdateStudy"]>[0], reply);
+    });
+    this.app.delete("/estudos/:id", { schema: { params: studyParams } }, async (request, reply) => {
+      return studyController.DeleteStudy(request as Parameters<StudyController["DeleteStudy"]>[0], reply);
     });
 
     this.app.post("/study/:id/points", async (request, reply) => {

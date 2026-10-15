@@ -26,6 +26,12 @@ npm run dev
 
 O CRUD de critérios utiliza SQL parametrizado em `src/database/queries.ts`, executado por `src/database/pool.ts`. Não depende do SDK nem das credenciais do Supabase.
 
+## Estudos no Banco de Desenvolvimento Local
+
+Com o banco PostgreSQL de desenvolvimento já inicializado e configurado com host local no `.env`, execute `npm run dev:loopback` para servir a API na porta 3000, com Supabase e acesso remoto bloqueados. Estudos usam `GET /estudos`, `POST /estudos` e `GET`, `PATCH`, `DELETE /estudos/:id`. A rota `POST /create-study` permanece compatível com a criação e também grava pelo pool PostgreSQL.
+
+A edição altera somente nome, descrição, UF, município, bairro e os IDs de perfil RF e critério de instalação. O proprietário, a geometria, o status e os metadados são preservados. A API verifica os vínculos com o usuário, retorna 404 para estudos inexistentes e 409 quando uma chave estrangeira impede a exclusão. O banco isolado na porta 5433 precisa ter seu schema inicializado antes de ser utilizado.
+
 ## Configuração AWS preservada
 
 O arquivo `.env` continua guardando `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL` e `PORT` do ambiente remoto. Ele não foi sobrescrito por dados locais.
