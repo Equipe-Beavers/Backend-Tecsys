@@ -16,7 +16,7 @@ O CRUD usa somente colunas existentes na tabela local. A persistência usa Postg
 | Datas de criação e atualização | Criação pelo padrão do banco e atualização com `CURRENT_TIMESTAMP` no SQL da API |
 | FK `estudos.id_criterio_instalacao` sem cascata | A API converte a violação da FK na exclusão em HTTP 409 |
 
-As regras de distância máxima não negativa e limite de gateways positivo pertencem à API. Os valores avançados são guardados em JSONB; as chaves internas são definidas pela interface e não são validadas pelo backend.
+A API valida os limites de distância (10–500 m), os tipos elétricos e as propriedades conhecidas das seções JSONB.
 
 ## Rotas
 
@@ -36,18 +36,18 @@ Controllers e Services usam nomes em inglês; as propriedades JSON mantêm os no
 | --- | --- | --- |
 | `id_usuario` | Obrigatório | Inteiro positivo; usuário deve existir |
 | `nome` | Obrigatório | De 1 a 150 caracteres, com pelo menos um caractere não branco; espaços externos removidos |
-| `tipos_elementos_permitidos` | Opcional | JSON |
-| `tipos_elementos_proibidos` | Opcional | JSON |
+| `tipos_elementos_permitidos` | Opcional | Lista de códigos de ativos elétricos das camadas ou `null` |
+| `tipos_elementos_proibidos` | Opcional | Lista de códigos de ativos elétricos das camadas ou `null` |
 | `requer_alimentacao_eletrica` | Opcional | Booleano ou `null` |
-| `distancia_minima_ativos_m` | Opcional | Número não negativo ou `null`; não pode ultrapassar a máxima quando ambas existirem |
-| `distancia_maxima_ativos_m` | Opcional | Número entre 0 e 9.999.999.999,99, ou `null`; persistido como decimal(12,2) |
+| `distancia_minima_ativos_m` | Opcional | Número entre 10 e 500 ou `null`; não pode ultrapassar a máxima quando ambas existirem |
+| `distancia_maxima_ativos_m` | Opcional | Número entre 10 e 500, ou `null`; persistido como decimal(12,2) |
 | `limite_gateways` | Opcional | Inteiro de 1 a 2.147.483.647, ou `null` |
 | `relevo` | Opcional | JSONB ou `null`; a interface usa `altitude_minima_m`, `altitude_maxima_m` e `declividade_maxima_graus` |
 | `vegetacoes` | Opcional | JSONB ou `null`; a interface usa listas `permitidas` e `proibidas` |
 | `edificacoes` | Opcional | JSONB ou `null`; contém raio, quantidade máxima, altura máxima e distância mínima |
 | `antenas` | Opcional | JSONB ou `null`; contém raio, quantidade máxima, distância máxima e conflito de frequência |
 
-Todos os campos JSONB aceitam estruturas JSON e `null`; o contrato interno atualmente produzido pelo formulário é ilustrado acima.
+As listas de ativos aceitam somente códigos do catálogo elétrico ou `null`. As demais seções aceitam objetos ou `null`.
 
 O critério mínimo aceito contém usuário e nome. Opcionais omitidos na criação são gravados como `null`. O banco define `criado_em` com seu valor padrão e gera `id_criterio_instalacao`. Ambos, assim como `atualizado_em`, não podem ser enviados pelo cliente.
 
@@ -65,11 +65,12 @@ Content-Type: application/json
 
 {
   "id_usuario": 1,
-  "nome": "Postes e torres",
-  "tipos_elementos_permitidos": ["POSTE", "TORRE"],
-  "tipos_elementos_proibidos": ["POSTES_TERCEIROS"],
+  "nome": "Postes e subestações",
+  "tipos_elementos_permitidos": ["POSTE", "SUBESTACAO"],
+  "tipos_elementos_proibidos": ["TRANSFORMADOR"],
   "requer_alimentacao_eletrica": true,
-  "distancia_maxima_ativos_m": 1500,
+  "distancia_minima_ativos_m": 10,
+  "distancia_maxima_ativos_m": 500,
   "limite_gateways": 5,
   "relevo": {"altitude_minima_m": 100, "altitude_maxima_m": 900, "declividade_maxima_graus": 20},
   "vegetacoes": {"permitidas": ["PASTAGEM"], "proibidas": ["MANGUE"]},
@@ -93,7 +94,7 @@ PATCH /update-install-criterion/7
 Content-Type: application/json
 
 {
-  "nome": "Postes e torres — revisão",
+  "nome": "Postes e subestações — revisão",
   "limite_gateways": null
 }
 ```
@@ -121,7 +122,7 @@ O CRUD exige `distancia_minima_ativos_m` e `distancia_maxima_ativos_m`. Para ban
 
 A exclusão depende da integridade referencial do banco. No novo modelo deve existir a chave estrangeira de `estudos.id_criterio_instalacao` para `criterios_instalacao.id_criterio_instalacao`, sem exclusão em cascata. A violação de FK é convertida em 409; um banco sem essa relação não oferece essa proteção.
 
-O módulo usa PostgreSQL diretamente, sem Supabase. O [ambiente local](LocalCriteriaDatabase.md) usa `.env.local`, preservando a configuração AWS em `.env`. `id_usuario` é um dado de relacionamento e filtro, não autenticação. Autenticação e autorização por usuário não foram implementadas nesta tarefa.
+O módulo usa PostgreSQL diretamente, sem Supabase. O backend utiliza o `.env` existente, com o PostgreSQL configurado pelo time. `id_usuario` é um dado de relacionamento e filtro, não autenticação. Autenticação e autorização por usuário não foram implementadas nesta tarefa.
 
 A biblioteca e o seletor de critérios do frontend consomem estas rotas, com páginas de 20 registros carregadas sob demanda. O seletor usa o mesmo modelo tipado da biblioteca e envia o ID escolhido no payload de criação do estudo. A adequação do endpoint e do serviço de estudos ao DER continua fora deste CRUD.
 
@@ -133,11 +134,10 @@ A criação usa uma única operação de inserção; o PATCH usa uma única oper
 
 ```bash
 npm run build
-npm test -- test/InstallCriterion.test.ts test/LocalDatabaseConfig.test.ts
-npm run test:criteria:local
+npm test -- test/InstallCriterion.test.ts test/InstallCriterionValidation.test.ts
 ```
 
-Os testes unitários exercitam as rotas Fastify e substituem o pool PostgreSQL por resultados controlados. Os testes de configuração verificam o bloqueio de acesso remoto sem abrir conexão. O comando `test:criteria:local` executa o CRUD no banco local real com o DER aprovado, incluindo a proteção de exclusão por estudo, e remove seus próprios registros temporários ao finalizar. Não valida o ambiente AWS.
+Os testes exercitam as rotas Fastify com o pool PostgreSQL simulado, sem conectar ao banco.
 
 ## Validação semântica das restrições (14/10/2026)
 
@@ -149,16 +149,30 @@ As rotas de criação e edição retornam HTTP 400 para restrições inválidas 
 - Quantidades: inteiros positivos até 2147483647, conforme a validação já utilizada no formulário.
 - Indicador de conflito de frequência: booleano ou `null`.
 - Vegetação permitida/proibida: listas de textos não vazios ou `null`, sem interseção após normalização de caixa/acentos.
-- Listas de tipos de ativos não podem se contradizer. Aliases históricos (ex.: TORRE/TORRES) são equivalentes para comparação; a validação não reescreve registros antigos.
+- Listas de tipos de ativos não podem se contradizer. POSTES e SUBESTACOES são normalizados para POSTE e SUBESTACAO. Tipos fora do catálogo das camadas são rejeitados.
 
 O PATCH mantém sua semântica: campo de primeiro nível omitido é preservado; seção JSONB enviada substitui a seção inteira (não é mesclagem recursiva). As regras internas são aplicadas à seção enviada. Na alteração de qualquer lista de ativos, o serviço lê a outra lista com `SELECT FOR UPDATE` e grava na mesma transação. Alterações concorrentes não conseguem introduzir um conflito entre as listas.
 
-Compatibilidade: propriedades extras dentro dos objetos JSONB são preservadas. Seleções históricas de ativos representadas como objetos continuam aceitas como conteúdo opaco; não é possível inferir conflitos dessas estruturas sem um contrato adicional. A checagem de conflito de ativos cobre as listas de strings utilizadas pela interface atual. Não foram criados novos CHECKs no banco; gravações SQL fora da API não passam por estas validações.
+Compatibilidade: propriedades extras das seções avançadas são preservadas. Objetos e códigos desconhecidos nas listas de ativos são rejeitados em novas gravações. Registros antigos não são apagados automaticamente; o formulário oferece remoção explícita das regras antigas.
 
 Frontend: mostra o erro sem descartar o formulário e impede envio de intervalos/conflitos identificados localmente. A API permanece responsável pela validação de chamadas externas.
 
 
 ### Intervalo de distância aos ativos
 
-POST e PATCH aceitam os dois limites em metros. Exemplo: `{"distancia_minima_ativos_m":500,"distancia_maxima_ativos_m":2500}`.
+POST e PATCH aceitam os dois limites em metros. Exemplo: `{"distancia_minima_ativos_m":100,"distancia_maxima_ativos_m":300}`.
 Omissão em PATCH preserva o limite anterior; `null` remove somente esse limite. A API valida o par enviado e a constraint `criterios_instalacao_distancias_validas` valida o resultado persistido de atualizações parciais, retornando HTTP 400 em caso de intervalo invertido. Registros antigos podem manter mínima nula. Nenhuma atualização em AWS foi executada.
+
+## Catálogo de regras elétricas
+
+O catálogo é compartilhado com a API de ativos em `src/interface/AssetType.ts`: POSTE, TRANSFORMADOR, SUBESTACAO, DISPOSITIVO, CHAVE_FUSIVEL, CHAVE_SECCIONADORA, RELIGADOR, SECCIONADOR_AUTOMATICO, REGULADOR_TENSAO e BANCO_CAPACITORES.
+
+Permitido e Bloqueado são listas mutuamente exclusivas. Neutro significa ausência nas duas listas e é o padrão do novo formulário. Tipos personalizados não são aceitos.
+
+## Preparação do PostgreSQL
+
+Consulte [o guia do banco](../database/README.md) para criação em banco vazio,
+verificação somente de leitura e aplicação das migrations em bancos existentes.
+A migration 006 acrescenta `criterios_instalacao_distancias_faixa`, que garante
+10–500 m também em SQL direto; a API traduz sua violação para HTTP 400.
+Não foi executada automaticamente em nenhum ambiente.

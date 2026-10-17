@@ -13,6 +13,12 @@ export class InstallCriterionUtils {
     for (const field of this.fields) {
       if (Object.hasOwn(input, field)) data[field] = input[field];
     }
+    for (const field of ["tipos_elementos_permitidos", "tipos_elementos_proibidos"] as const) {
+      if (Array.isArray(input[field])) data[field] = [...new Set((input[field] as string[]).map(value => {
+        const key = value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[\s-]+/g, "_");
+        return ({ POSTES: "POSTE", SUBESTACOES: "SUBESTACAO" } as Record<string, string>)[key] ?? key;
+      }))];
+    }
     if (input.nome !== undefined) data.nome = input.nome.trim();
     return JSON.stringify(data);
   }
@@ -35,6 +41,10 @@ export class InstallCriterionUtils {
   }
 
   RethrowDatabaseError(error: unknown, deleting = false): never {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "23514"
+      && "constraint" in error && error.constraint === "criterios_instalacao_distancias_faixa") {
+      throw new InstallCriterionError(400, "A distância aos ativos deve estar entre 10 e 500 m.");
+    }
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23514"
       && "constraint" in error && error.constraint === "criterios_instalacao_distancias_validas") {
       throw new InstallCriterionError(400, "A distância mínima não pode ultrapassar a distância máxima.");

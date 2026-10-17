@@ -1,3 +1,4 @@
+import { assetTypes } from "../interface/AssetType.js";
 import type { CreateInstallCriterionDTO } from "../interface/InstallCriterionDTO.js";
 import { InstallCriterionError } from "./InstallCriterionError.js";
 
@@ -9,12 +10,7 @@ export class InstallCriterionValidation {
   private key(value: string): string {
     const key = value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .toUpperCase().replace(/[\s-]+/g, "_");
-    const aliases: Record<string, string> = {
-      POSTE: "POSTES", SUBESTACAO: "SUBESTACOES", TORRE: "TORRES",
-      EDIFICACAO_PROPRIA: "EDIFICACOES_PROPRIAS", RESERVATORIO: "RESERVATORIOS",
-      POSTE_DE_TERCEIRO: "POSTES_TERCEIROS", POSTE_DE_TERCEIROS: "POSTES_TERCEIROS",
-      POSTES_DE_TERCEIROS: "POSTES_TERCEIROS", ESTRUTURA_PROVISORIA: "ESTRUTURAS_PROVISORIAS",
-    };
+    const aliases: Record<string, string> = { POSTES: "POSTE", SUBESTACOES: "SUBESTACAO" };
     return aliases[key] ?? key;
   }
 
@@ -24,14 +20,20 @@ export class InstallCriterionValidation {
     return value as Record<string, unknown>;
   }
 
-  private list(value: unknown, label: string, legacyObject = false): string[] {
+  private list(value: unknown, label: string): string[] {
     if (value == null) return [];
-    // Historical structured asset selections remain opaque and are not rewritten.
-    if (legacyObject && typeof value === "object" && !Array.isArray(value)) return [];
     if (!Array.isArray(value) || value.some(item => typeof item !== "string" || !item.trim())) {
       this.fail(`${label} deve ser uma lista de textos não vazios.`);
     }
     return (value as string[]).map(item => this.key(item));
+  }
+
+  private assets(value: unknown, label: string): string[] {
+    const items = this.list(value, label);
+    if (items.some(item => !assetTypes.some(type => type === item))) {
+      this.fail(`${label}: selecione somente tipos de ativos elétricos disponíveis nas camadas.`);
+    }
+    return items;
   }
 
   private disjoint(allowed: string[], blocked: string[], label: string): void {
@@ -48,13 +50,16 @@ export class InstallCriterionValidation {
   }
 
   Validate(input: Partial<CreateInstallCriterionDTO>): void {
+    for (const field of ["distancia_minima_ativos_m", "distancia_maxima_ativos_m"] as const) {
+      this.number(input as Record<string, unknown>, field, "Distância aos ativos", 10, 500);
+    }
     if (input.distancia_minima_ativos_m != null && input.distancia_maxima_ativos_m != null
       && input.distancia_minima_ativos_m > input.distancia_maxima_ativos_m) {
       this.fail("A distância mínima não pode ultrapassar a distância máxima.");
     }
     this.disjoint(
-      this.list(input.tipos_elementos_permitidos, "Ativos permitidos", true),
-      this.list(input.tipos_elementos_proibidos, "Ativos bloqueados", true), "Ativos",
+      this.assets(input.tipos_elementos_permitidos, "Ativos permitidos"),
+      this.assets(input.tipos_elementos_proibidos, "Ativos bloqueados"), "Ativos",
     );
     const relief = this.object(input.relevo, "Relevo");
     if (relief) {

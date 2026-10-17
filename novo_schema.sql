@@ -1,3 +1,6 @@
+-- Estrutura consolidada de referência. Aplicar somente em banco vazio.
+CREATE EXTENSION IF NOT EXISTS postgis;
+
 CREATE TABLE posicoes_geograficas (
     id_posicao BIGSERIAL PRIMARY KEY,
     tipo_posicao VARCHAR(30) NOT NULL,
@@ -133,6 +136,10 @@ CREATE TABLE criterios_instalacao (
   distancia_minima_ativos_m DECIMAL(12,2),
   distancia_maxima_ativos_m DECIMAL(12,2),
   CONSTRAINT criterios_instalacao_distancias_validas CHECK (distancia_minima_ativos_m IS NULL OR (distancia_minima_ativos_m >= 0 AND (distancia_maxima_ativos_m IS NULL OR distancia_minima_ativos_m <= distancia_maxima_ativos_m))),
+  CONSTRAINT criterios_instalacao_distancias_faixa CHECK (
+    (distancia_minima_ativos_m IS NULL OR distancia_minima_ativos_m BETWEEN 10 AND 500)
+    AND (distancia_maxima_ativos_m IS NULL OR distancia_maxima_ativos_m BETWEEN 10 AND 500)
+  ),
   limite_gateways INT,
   relevo JSONB,
   vegetacoes JSONB,
