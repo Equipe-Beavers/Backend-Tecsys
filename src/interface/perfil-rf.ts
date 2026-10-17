@@ -46,3 +46,46 @@ export interface CriarPerfilRf {
     considera_obstaculos?: boolean;
     parametros_adicionais?: Record<string, unknown> | null;
 }
+
+export interface RFProfileListQuery {
+    id_usuario?: number;
+    page?: number;
+    limit?: number;
+}
+
+export interface CreateRFProfileInput {
+    id_usuario: number;
+    nome: string;
+    frequencia_mhz: number;
+    potencia_transmissao_dbm: number;
+    sensibilidade_recepcao_dbm: number;
+    altura_gateway_m?: number | null;
+    altura_dispositivo_m?: number | null;
+    capacidade_max_equipamentos?: number | null;
+    atenuacao_adicional_db?: number | null;
+    considera_relevo?: boolean;
+    considera_vegetacao?: boolean;
+    considera_edificacoes?: boolean;
+    considera_antenas?: boolean;
+}
+
+export type UpdateRFProfileInput = Partial<Omit<CreateRFProfileInput, "id_usuario">>;
+
+export interface RFProfileListItem {
+    id_perfil_rf: number;
+    id_usuario: number;
+    nome: string;
+    frequencia_mhz: number;
+    potencia_transmissao_dbm: number;
+    sensibilidade_recepcao_dbm: number;
+    altura_gateway_m: number | null;
+    altura_dispositivo_m: number | null;
+    capacidade_max_equipamentos: number | null;
+    atenuacao_adicional_db: number | null;
+    considera_relevo: boolean;
+    considera_vegetacao: boolean;
+    considera_edificacoes: boolean;
+    considera_antenas: boolean;
+    criado_em: string;
+    atualizado_em: string | null;
+}
