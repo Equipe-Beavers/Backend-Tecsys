@@ -4,7 +4,6 @@ dist/
 build/
 
 .env
-.env.local
 .env.*.local
 !.env.example
 
@@ -33,5 +32,4 @@ coverage/
 # Remote credentials stay private; only templates may be committed.
 .env.*
 !.env.example
-!.env.local.example
 tecsys_backup.dump

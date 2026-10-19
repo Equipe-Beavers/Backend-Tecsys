@@ -120,7 +120,7 @@ Use o schema efetivamente instalado no banco local. Esta API não exige a coluna
 
 A exclusão depende da integridade referencial do banco. No novo modelo deve existir a chave estrangeira de `estudos.id_criterio_instalacao` para `criterios_instalacao.id_criterio_instalacao`, sem exclusão em cascata. A violação de FK é convertida em 409; um banco sem essa relação não oferece essa proteção.
 
-O módulo usa PostgreSQL diretamente, sem Supabase. O [ambiente local](LocalCriteriaDatabase.md) usa `.env.local`, preservando a configuração AWS em `.env`. `id_usuario` é um dado de relacionamento e filtro, não autenticação. Autenticação e autorização por usuário não foram implementadas nesta tarefa.
+O módulo usa PostgreSQL diretamente, sem Supabase. `id_usuario` é um dado de relacionamento e filtro, não autenticação. Autenticação e autorização por usuário não foram implementadas nesta tarefa.
 
 A biblioteca e o seletor de critérios do frontend consomem estas rotas, com páginas de 20 registros carregadas sob demanda. O seletor usa o mesmo modelo tipado da biblioteca e envia o ID escolhido no payload de criação do estudo. A adequação do endpoint e do serviço de estudos ao DER continua fora deste CRUD.
 
@@ -132,8 +132,7 @@ A criação usa uma única operação de inserção; o PATCH usa uma única oper
 
 ```bash
 npm run build
-npm test -- test/InstallCriterion.test.ts test/LocalDatabaseConfig.test.ts
-npm run test:criteria:local
+npm test -- test/InstallCriterion.test.ts
 ```
 
-Os testes unitários exercitam as rotas Fastify e substituem o pool PostgreSQL por resultados controlados. Os testes de configuração verificam o bloqueio de acesso remoto sem abrir conexão. O comando `test:criteria:local` executa o CRUD no banco local real com o DER aprovado, incluindo a proteção de exclusão por estudo, e remove seus próprios registros temporários ao finalizar. Não valida o ambiente AWS.
+Os testes exercitam as rotas Fastify com resultados PostgreSQL controlados e não alteram o banco configurado em `.env`.
