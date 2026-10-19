@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { RegioesRepository, type BoundingBox } from "../repository/regioes.repository.js";
+import { RegioesRepository, type BoundingBox } from "./repository/RegionsRepository.js";
 
 const LIMITE_PADRAO = 20;
 const LIMITE_MAXIMO = 100;

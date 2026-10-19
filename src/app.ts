@@ -5,11 +5,21 @@ import { ScenarioController } from "./controllers/ScenarioController.js";
 import { InstallCriterionController } from "./controllers/InstallCriterionController.js";
 import { RFController } from "./controllers/RFController.js";
 import { RecommendationController } from "./controllers/RecommendationController.js";
+import cors from "@fastify/cors";
+import { ativoRoutes } from "./modules/ativo.routes.js";
+import { antenasRoutes } from "./modules/antenas.routes.js";
+import { vegetacaoRoutes } from "./modules/vegetacao.routes.js";
+import { regioesRoutes } from "./modules/regioes.routes.js";
 
 class App {
   public app: fastify.FastifyInstance;
   constructor() {
     this.app = fastify({ logger: true });
+    this.app.register(cors, {
+      origin: process.env.CORS_ORIGIN
+        ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
+        : true,
+    });
     this.routes();
   }
 
@@ -102,6 +112,11 @@ class App {
       );
     });
 
+    // Endpoints usados pelo mapa Flutter.
+    this.app.register(ativoRoutes);
+    this.app.register(regioesRoutes, { prefix: "/api" });
+    this.app.register(antenasRoutes);
+    this.app.register(vegetacaoRoutes);
   }
 }
 
