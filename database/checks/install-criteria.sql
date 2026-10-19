@@ -1,4 +1,4 @@
--- Diagnóstico somente de leitura. Pode ser executado antes das migrations.
+-- Diagnóstico somente de leitura. Confere a estrutura esperada de database/schema.sql.
 -- Não lista credenciais nem registros de usuários.
 BEGIN TRANSACTION READ ONLY;
 
