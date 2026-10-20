@@ -220,6 +220,24 @@ describe("InstallCriterionController CRUD", () => {
     expect(database.query).not.toHaveBeenCalled();
   });
 
+  it("rejects negative RF installation heights before querying", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/create-rf-profile",
+      payload: {
+        id_usuario: 1,
+        nome: "Altura inválida",
+        frequencia_mhz: 915,
+        potencia_transmissao_dbm: 8,
+        sensibilidade_recepcao_dbm: -120,
+        altura_gateway_m: -1,
+        altura_dispositivo_m: -1,
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
   it("gets an RF profile by ID and normalizes database numeric values", async () => {
     new DatabaseResult({
       id_perfil_rf: "12", id_usuario: "1", nome: "GW-9200 LoRaWAN",
