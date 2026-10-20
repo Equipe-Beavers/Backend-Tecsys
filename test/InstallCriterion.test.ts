@@ -220,6 +220,37 @@ describe("InstallCriterionController CRUD", () => {
     expect(database.query).not.toHaveBeenCalled();
   });
 
+  it("calculates the RF preview with additional attenuation and planning margin", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/calculate-rf-range",
+      payload: {
+        frequencia_mhz: 100,
+        potencia_transmissao_dbm: 20,
+        sensibilidade_recepcao_dbm: -100,
+        atenuacao_adicional_db: 5,
+      },
+    });
+    const expectedRangeMeters = 10 ** ((20 - -100 - 5 - 20 - 20 * Math.log10(100) - 32.44) / 20) * 1000;
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.alcance_estimado_m).toBeCloseTo(expectedRangeMeters);
+    expect(response.json().data.margem_planejamento_db).toBe(20);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { frequencia_mhz: 0, potencia_transmissao_dbm: 20, sensibilidade_recepcao_dbm: -100, atenuacao_adicional_db: 0 },
+    { frequencia_mhz: 100, potencia_transmissao_dbm: 20, sensibilidade_recepcao_dbm: 10, atenuacao_adicional_db: 0 },
+    { frequencia_mhz: 100, potencia_transmissao_dbm: 20, sensibilidade_recepcao_dbm: -100, atenuacao_adicional_db: -1 },
+  ])("rejects invalid RF range calculation parameters: %j", async (payload) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/calculate-rf-range",
+      payload,
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
   it("rejects negative RF installation heights before querying", async () => {
     const response = await app.inject({
       method: "POST",
