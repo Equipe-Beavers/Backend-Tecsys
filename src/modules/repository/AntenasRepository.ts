@@ -33,7 +33,7 @@ export class AntenasRepository {
         const filtradasSql = `
             SELECT id, entidade, municipio, uf, latitude, longitude,
                    tecnologia, tipo_estacao, altura_antena_m
-            FROM antenas_anatel
+            FROM public.emissoes_anatel
             WHERE geom && ST_MakeEnvelope($1, $2, $3, $4, 4674)
               AND latitude BETWEEN $2 AND $4
               AND longitude BETWEEN $1 AND $3
@@ -69,7 +69,6 @@ export class AntenasRepository {
             `${cte} SELECT COUNT(*)::int AS total FROM agrupadas`,
             values,
         );
-
         const dataResult = await pool.query<AntenaAgrupadaRow>(
             `${cte}
              SELECT * FROM agrupadas
@@ -88,15 +87,11 @@ export class AntenasRepository {
             totalRegistros: Number(row.total_registros),
             tecnologias: row.tecnologias ?? [],
             tipoEstacao: row.tipo_estacao,
-            alturaAntenaMediaM:
-                row.altura_antena_media_m == null
-                    ? null
-                    : Number(row.altura_antena_media_m),
+            alturaAntenaMediaM: row.altura_antena_media_m == null
+                ? null
+                : Number(row.altura_antena_media_m),
         }));
 
-        return {
-            data,
-            total: Number(totalResult.rows[0]?.total ?? 0),
-        };
+        return { data, total: Number(totalResult.rows[0]?.total ?? 0) };
     }
 }

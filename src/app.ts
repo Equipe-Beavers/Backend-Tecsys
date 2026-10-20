@@ -8,6 +8,7 @@ import { RecommendationController } from "./controllers/RecommendationController
 import cors from "@fastify/cors";
 import { ativoRoutes } from "./modules/ativo.routes.js";
 import { antenasRoutes } from "./modules/antenas.routes.js";
+import { emissoesRfRoutes } from "./modules/emissoes-rf.routes.js";
 import { vegetacaoRoutes } from "./modules/vegetacao.routes.js";
 import { regioesRoutes } from "./modules/regioes.routes.js";
 
@@ -116,6 +117,7 @@ class App {
     this.app.register(ativoRoutes);
     this.app.register(regioesRoutes, { prefix: "/api" });
     this.app.register(antenasRoutes);
+    this.app.register(emissoesRfRoutes);
     this.app.register(vegetacaoRoutes);
   }
 }
