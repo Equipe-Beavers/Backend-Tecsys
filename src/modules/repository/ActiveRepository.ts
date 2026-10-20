@@ -2,20 +2,8 @@ import type { QueryResultRow } from "pg";
 import { pool } from "../../database/pool.js";
 import { findAssetsQuery, findAssetByIdQuery, findDeviceTypesQuery, findDistributorsQuery } from "../../database/queries/ativo_queries.js";
 
-export const assetTypes = [
-    "POSTE",
-    "TRANSFORMADOR",
-    "SUBESTACAO",
-    "DISPOSITIVO",
-    "CHAVE_FUSIVEL",
-    "CHAVE_SECCIONADORA",
-    "RELIGADOR",
-    "SECCIONADOR_AUTOMATICO",
-    "REGULADOR_TENSAO",
-    "BANCO_CAPACITORES",
-] as const;
-
-export type AssetType = (typeof assetTypes)[number];
+import { assetTypes, type AssetType } from "../../interface/AssetType.js";
+export { assetTypes, type AssetType } from "../../interface/AssetType.js";
 
 export type Distributor = string;
 

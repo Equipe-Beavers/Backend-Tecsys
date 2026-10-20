@@ -20,7 +20,7 @@ async function bootstrap() {
 
         await server.listen({
             port: env.port,
-            host: "0.0.0.0",
+            host: env.host,
         });
     } catch (error: any) {
         console.error("Erro ao iniciar o servidor: ", error);
