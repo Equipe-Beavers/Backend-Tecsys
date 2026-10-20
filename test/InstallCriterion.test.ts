@@ -23,7 +23,7 @@ class DatabaseResult {
 const criterion = {
   id_criterio_instalacao: 7, id_usuario: 1, nome: "Postes",
   tipos_elementos_permitidos: ["POSTE"], tipos_elementos_proibidos: null,
-  requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0, limite_gateways: 3,
+  requer_alimentacao_eletrica: false, distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
   relevo: null, vegetacoes: null, edificacoes: null, antenas: null,
   criado_em: "2026-10-06T12:00:00.000Z", atualizado_em: null,
 };
@@ -49,11 +49,11 @@ describe("InstallCriterionController CRUD", () => {
     expect(database.query).not.toHaveBeenCalled();
   });
 
-  it("creates using only the new model, trims the name and preserves JSON, false and zero", async () => {
+  it("creates using only the new model, trims the name and preserves JSON, false and valid distances", async () => {
     new DatabaseResult(criterion);
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload: {
       id_usuario: 1, nome: "  Postes  ", tipos_elementos_permitidos: ["POSTE"],
-      requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0, limite_gateways: 3,
+      requer_alimentacao_eletrica: false, distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
       relevo: { altitude_minima_m: 10, declividade_maxima_graus: 20 },
       vegetacoes: { permitidas: ["PASTAGEM"], proibidas: ["MANGUE"] },
       edificacoes: { quantidade_maxima: 3 },
@@ -65,7 +65,7 @@ describe("InstallCriterionController CRUD", () => {
     expect(database.query.mock.calls[0]?.[0]).toBe(createInstallCriterionQuery);
     expect(JSON.parse(database.query.mock.calls[0]?.[1][0])).toEqual({
       id_usuario: 1, nome: "Postes", tipos_elementos_permitidos: ["POSTE"],
-      requer_alimentacao_eletrica: false, distancia_maxima_ativos_m: 0, limite_gateways: 3,
+      requer_alimentacao_eletrica: false, distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
       relevo: { altitude_minima_m: 10, declividade_maxima_graus: 20 },
       vegetacoes: { permitidas: ["PASTAGEM"], proibidas: ["MANGUE"] },
       edificacoes: { quantidade_maxima: 3 },
@@ -77,7 +77,7 @@ describe("InstallCriterionController CRUD", () => {
     {}, { id_usuario: 1 }, { id_usuario: 1, nome: "   " },
     { id_usuario: 0, nome: "Postes" }, { id_usuario: 1, nome: "x".repeat(151) },
     { id_usuario: 1, nome: "Postes", distancia_maxima_ativos_m: -1 },
-    { id_usuario: 1, nome: "Postes", distancia_minima_ativos_m: 10 },
+    { id_usuario: 1, nome: "Postes", distancia_minima_ativos_m: -10 },
     { id_usuario: 1, nome: "Postes", limite_gateways: 1.5 },
     { id_usuario: 1, nome: "Postes", limite_gateways: 0 },
     { id_usuario: 1, nome: "Postes", limite_gateways: 2147483648 },

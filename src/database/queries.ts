@@ -1,16 +1,16 @@
 // SQL for installation criteria. Values are always supplied as parameters.
 const criterionColumns = `id_criterio_instalacao, id_usuario, nome,
   tipos_elementos_permitidos, tipos_elementos_proibidos,
-  requer_alimentacao_eletrica, distancia_maxima_ativos_m, limite_gateways,
+  requer_alimentacao_eletrica, distancia_minima_ativos_m, distancia_maxima_ativos_m, limite_gateways,
   relevo, vegetacoes, edificacoes, antenas, criado_em, atualizado_em`;
 
 export const createInstallCriterionQuery = `
   INSERT INTO criterios_instalacao (
     id_usuario, nome, tipos_elementos_permitidos, tipos_elementos_proibidos,
-    requer_alimentacao_eletrica, distancia_maxima_ativos_m, limite_gateways,
+    requer_alimentacao_eletrica, distancia_minima_ativos_m, distancia_maxima_ativos_m, limite_gateways,
     relevo, vegetacoes, edificacoes, antenas
   ) SELECT id_usuario, nome, tipos_elementos_permitidos, tipos_elementos_proibidos,
-    requer_alimentacao_eletrica, distancia_maxima_ativos_m, limite_gateways,
+    requer_alimentacao_eletrica, distancia_minima_ativos_m, distancia_maxima_ativos_m, limite_gateways,
     relevo, vegetacoes, edificacoes, antenas
   FROM jsonb_populate_record(NULL::criterios_instalacao, $1::jsonb)
   RETURNING ${criterionColumns}`;
@@ -32,6 +32,7 @@ export const updateInstallCriterionQuery = `
     tipos_elementos_permitidos = CASE WHEN $2::jsonb ? 'tipos_elementos_permitidos' THEN NULLIF($2::jsonb->'tipos_elementos_permitidos', 'null'::jsonb) ELSE tipos_elementos_permitidos END,
     tipos_elementos_proibidos = CASE WHEN $2::jsonb ? 'tipos_elementos_proibidos' THEN NULLIF($2::jsonb->'tipos_elementos_proibidos', 'null'::jsonb) ELSE tipos_elementos_proibidos END,
     requer_alimentacao_eletrica = CASE WHEN $2::jsonb ? 'requer_alimentacao_eletrica' THEN ($2::jsonb->>'requer_alimentacao_eletrica')::boolean ELSE requer_alimentacao_eletrica END,
+    distancia_minima_ativos_m = CASE WHEN $2::jsonb ? 'distancia_minima_ativos_m' THEN ($2::jsonb->>'distancia_minima_ativos_m')::numeric ELSE distancia_minima_ativos_m END,
     distancia_maxima_ativos_m = CASE WHEN $2::jsonb ? 'distancia_maxima_ativos_m' THEN ($2::jsonb->>'distancia_maxima_ativos_m')::numeric ELSE distancia_maxima_ativos_m END,
     limite_gateways = CASE WHEN $2::jsonb ? 'limite_gateways' THEN ($2::jsonb->>'limite_gateways')::integer ELSE limite_gateways END,
     relevo = CASE WHEN $2::jsonb ? 'relevo' THEN NULLIF($2::jsonb->'relevo', 'null'::jsonb) ELSE relevo END,
@@ -179,3 +180,8 @@ export const updateStudyQuery = `
 
 export const deleteStudyQuery = `
   DELETE FROM estudos WHERE id_estudo = $1 RETURNING id_estudo`;
+export const lockInstallCriterionQuery = `SELECT tipos_elementos_permitidos, tipos_elementos_proibidos
+  FROM criterios_instalacao WHERE id_criterio_instalacao = $1 FOR UPDATE`;
+export const beginCriterionTransactionQuery = 'BEGIN';
+export const commitCriterionTransactionQuery = 'COMMIT';
+export const rollbackCriterionTransactionQuery = 'ROLLBACK';
