@@ -113,6 +113,73 @@ export const deleteRFProfileQuery = `
   WHERE id_perfil_rf = $1
   RETURNING id_perfil_rf`;
 
+const studyColumns = `id_estudo, id_usuario, id_perfil_rf, id_criterio_instalacao,
+  tipo_delimitacao, uf, municipio, bairro, ST_AsGeoJSON(ST_Transform(geom, 4326))::json AS geom,
+  nome, descricao, distribuidora, versao_bdgd, nome_base_externa,
+  tipos_ativo_selecionados, status, criado_em, atualizado_em`;
+
+export const createStudyQuery = `
+  INSERT INTO estudos (
+    id_usuario, id_perfil_rf, id_criterio_instalacao, tipo_delimitacao,
+    uf, municipio, bairro, geom, nome, descricao, distribuidora,
+    versao_bdgd, nome_base_externa, tipos_ativo_selecionados, status
+  ) SELECT
+    ($1::jsonb->>'id_usuario')::bigint,
+    profile.id_perfil_rf, criterion.id_criterio_instalacao,
+    $1::jsonb->>'tipo_delimitacao',
+    $1::jsonb->>'uf', $1::jsonb->>'municipio', $1::jsonb->>'bairro',
+    CASE WHEN NULLIF($1::jsonb->'geom', 'null'::jsonb) IS NULL THEN NULL
+      ELSE ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(($1::jsonb->'geom')::text), 4326), 4674) END,
+    $1::jsonb->>'nome', $1::jsonb->>'descricao', $1::jsonb->>'distribuidora',
+    $1::jsonb->>'versao_bdgd', $1::jsonb->>'nome_base_externa',
+    NULLIF($1::jsonb->'tipos_ativo_selecionados', 'null'::jsonb),
+    $1::jsonb->>'status'
+  FROM perfis_rf AS profile
+  JOIN criterios_instalacao AS criterion
+    ON criterion.id_criterio_instalacao = ($1::jsonb->>'id_criterio_instalacao')::bigint
+    AND criterion.id_usuario = ($1::jsonb->>'id_usuario')::bigint
+  WHERE profile.id_perfil_rf = ($1::jsonb->>'id_perfil_rf')::bigint
+    AND profile.id_usuario = ($1::jsonb->>'id_usuario')::bigint
+  RETURNING ${studyColumns}`;
+
+export const listStudiesQuery = `
+  SELECT ${studyColumns},
+    (SELECT profile.nome FROM perfis_rf AS profile
+      WHERE profile.id_perfil_rf = estudos.id_perfil_rf) AS nome_perfil_rf,
+    (SELECT criterion.nome FROM criterios_instalacao AS criterion
+      WHERE criterion.id_criterio_instalacao = estudos.id_criterio_instalacao) AS nome_criterio_instalacao
+  FROM estudos
+  WHERE ($1::bigint IS NULL OR id_usuario = $1::bigint)
+  ORDER BY id_estudo DESC`;
+
+export const getStudyQuery = `
+  SELECT ${studyColumns} FROM estudos WHERE id_estudo = $1`;
+
+export const updateStudyQuery = `
+  UPDATE estudos SET
+    nome = CASE WHEN $2::jsonb ? 'nome' THEN $2::jsonb->>'nome' ELSE nome END,
+    descricao = CASE WHEN $2::jsonb ? 'descricao' THEN $2::jsonb->>'descricao' ELSE descricao END,
+    uf = CASE WHEN $2::jsonb ? 'uf' THEN $2::jsonb->>'uf' ELSE uf END,
+    municipio = CASE WHEN $2::jsonb ? 'municipio' THEN $2::jsonb->>'municipio' ELSE municipio END,
+    bairro = CASE WHEN $2::jsonb ? 'bairro' THEN $2::jsonb->>'bairro' ELSE bairro END,
+    id_perfil_rf = CASE WHEN $2::jsonb ? 'id_perfil_rf' THEN ($2::jsonb->>'id_perfil_rf')::bigint ELSE id_perfil_rf END,
+    id_criterio_instalacao = CASE WHEN $2::jsonb ? 'id_criterio_instalacao' THEN ($2::jsonb->>'id_criterio_instalacao')::bigint ELSE id_criterio_instalacao END,
+    atualizado_em = CURRENT_TIMESTAMP
+  WHERE id_estudo = $1
+    AND EXISTS (
+      SELECT 1 FROM perfis_rf AS profile
+      WHERE profile.id_perfil_rf = COALESCE(($2::jsonb->>'id_perfil_rf')::bigint, estudos.id_perfil_rf)
+        AND profile.id_usuario = estudos.id_usuario
+    )
+    AND EXISTS (
+      SELECT 1 FROM criterios_instalacao AS criterion
+      WHERE criterion.id_criterio_instalacao = COALESCE(($2::jsonb->>'id_criterio_instalacao')::bigint, estudos.id_criterio_instalacao)
+        AND criterion.id_usuario = estudos.id_usuario
+    )
+  RETURNING ${studyColumns}`;
+
+export const deleteStudyQuery = `
+  DELETE FROM estudos WHERE id_estudo = $1 RETURNING id_estudo`;
 export const lockInstallCriterionQuery = `SELECT tipos_elementos_permitidos, tipos_elementos_proibidos
   FROM criterios_instalacao WHERE id_criterio_instalacao = $1 FOR UPDATE`;
 export const beginCriterionTransactionQuery = 'BEGIN';
