@@ -1,23 +1,13 @@
-import { pool } from "../../database/pool.js";
-import { findAssetsQuery, findAssetByIdQuery, findDeviceTypesQuery, findDistributorsQuery } from "../../database/queries/ativo_queries.js";
-import type { Asset, AssetFilters, AssetRow, AssetsPage, DeviceTypeSummary, DistributorSummary } from "../../interface/active-repository.js";
+import { pool } from "../database/pool.js";
+import { findAssetByIdQuery, findAssetsQuery, findDeviceTypesQuery, findDistributorsQuery } from "../database/queries/ativo_queries.js";
+import type { Asset, AssetFilters, AssetRow, AssetsPage, DeviceTypeSummary, DistributorSummary } from "../interface/active-repository.js";
+import { ActiveUtils } from "../utils/ActiveUtils.js";
 
-export class ActiveRepository {
-  mapRow(row: AssetRow): Asset {
-    return {
-      id: row.id,
-      codId: row.cod_id,
-      tipo: row.tipo,
-      latitude: Number(row.latitude),
-      longitude: Number(row.longitude),
-      municipio: row.municipio,
-      bairro: row.bairro,
-      distribuidora: row.distribuidora,
-      tipoDispositivoId: row.tipo_dispositivo_id,
-      tipoDispositivoNome: row.tipo_dispositivo_nome,
-      tipoDispositivoCategoria: row.tipo_dispositivo_categoria,
-      atributos: row.atributos,
-    };
+export class ActiveService {
+  private activeUtils: ActiveUtils;
+
+  constructor() {
+    this.activeUtils = new ActiveUtils();
   }
 
   async findAssets(filters: AssetFilters): Promise<AssetsPage> {
@@ -25,7 +15,7 @@ export class ActiveRepository {
     const result = await pool.query<AssetRow>(text, values);
 
     return {
-      items: result.rows.map(this.mapRow),
+      items: result.rows.map(this.activeUtils.mapRow),
       total: result.rows[0]?.total ?? 0,
     };
   }
@@ -60,6 +50,6 @@ export class ActiveRepository {
     const result = await pool.query<AssetRow>(text, values);
 
     const row = result.rows[0];
-    return row ? this.mapRow(row) : null;
+    return row ? this.activeUtils.mapRow(row) : null;
   }
 }

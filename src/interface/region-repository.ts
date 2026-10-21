@@ -45,3 +45,10 @@ export interface PaginatedResult<T> {
     totalPaginas: number;
   };
 }
+
+export interface DistribuidoraLocal {
+  nome: string;
+  totalAtivos: number;
+  latitude: number | null;
+  longitude: number | null;
+}

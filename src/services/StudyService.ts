@@ -26,7 +26,7 @@ export class StudyService {
       studyData.distribuidora?.trim() || null,
       studyData.versao_bdgd?.trim() || null,
       studyData.nome_base_externa?.trim() || null,
-      studyData.tipos_ativo_selecionados ?? null,
+      studyData.tipos_ativo_selecionados ? JSON.stringify(studyData.tipos_ativo_selecionados) : null,
       studyData.status ?? "AGUARDANDO_SELECAO",
     ];
 
@@ -35,7 +35,10 @@ export class StudyService {
       (id_usuario, tipo_delimitacao, uf, municipio, bairro, geom, nome, descricao, distribuidora, versao_bdgd, nome_base_externa, tipos_ativo_selecionados, status)
       VALUES (
         $1, $2, $3, $4, $5, 
-        CASE WHEN $6::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($6) END, 
+        CASE 
+          WHEN $6::text IS NULL THEN NULL 
+          ELSE ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($6), 4326), 4674)
+        END, 
         $7, $8, $9, $10, $11, $12, $13
       ) RETURNING *;
     `;

@@ -79,3 +79,20 @@ export interface AssetRow extends QueryResultRow {
     atributos: Record<string, unknown>;
     total?: number;
 }
+
+export interface ListQuery {
+    minLatitude?: string;
+    maxLatitude?: string;
+    minLongitude?: string;
+    maxLongitude?: string;
+    tipos?: string;
+    distribuidoras?: string;
+    municipio?: string;
+    bairro?: string;
+    limit?: string;
+    tiposDispositivos?: string;
+}
+
+export interface DetailParams {
+    id: string;
+}

@@ -5,6 +5,8 @@ import { ScenarioController } from "./controllers/ScenarioController.js";
 import { InstallCriterionController } from "./controllers/InstallCriterionController.js";
 import { RFController } from "./controllers/RFController.js";
 import { RecommendationController } from "./controllers/RecommendationController.js";
+import { RegionsController } from "./controllers/RegionsController.js";
+import { ActiveController } from "./controllers/ActiveController.js";
 
 class App {
   public app: fastify.FastifyInstance;
@@ -34,6 +36,8 @@ class App {
     const installCriterionController = new InstallCriterionController();
     const rfControler = new RFController();
     const recommendationController = new RecommendationController();
+    const regionsController = new RegionsController();
+    const activeController = new ActiveController();
 
     this.app.post("/create-user", async (request, reply) => {
       await userController.CreateUser(
@@ -102,6 +106,57 @@ class App {
       );
     });
 
+    // REGIÕES
+    this.app.get("/distribuidoras", async (request, reply) => {
+      return regionsController.ListDistributor(
+        request as Parameters<RegionsController["ListDistributor"]>[0],
+        reply,
+      );
+    });
+
+    this.app.get("/estados", async (request, reply) => {
+      return regionsController.ListStates(
+        request as Parameters<RegionsController["ListStates"]>[0],
+        reply,
+      );
+    });
+
+    this.app.get("/municipios", async (request, reply) => {
+      return regionsController.ListMunicipios(
+        request as Parameters<RegionsController["ListMunicipios"]>[0],
+        reply,
+      );
+    });
+
+    this.app.get("/bairros", async (request, reply) => {
+      return regionsController.ListNeighborhood(
+        request as Parameters<RegionsController["ListNeighborhood"]>[0],
+        reply,
+      );
+    });
+
+    // ATIVOS
+    this.app.get("/ativos/distribuidoras", async (request, reply) => {
+      await activeController.FindDistributors(request, reply);
+    });
+
+    this.app.get("/ativos/tipos-dispositivos", async (request, reply) => {
+      await activeController.FindDeviceTypes(request, reply);
+    });
+
+    this.app.get("/ativos", async (request, reply) => {
+      await activeController.FindAssets(
+        request as Parameters<ActiveController["FindAssets"]>[0], 
+        reply
+      );
+    });
+
+    this.app.get("/ativos/:id", async (request, reply) => {
+      await activeController.FindAssetById(
+        request as Parameters<ActiveController["FindAssetById"]>[0],
+        reply
+      );
+    });
   }
 }
 

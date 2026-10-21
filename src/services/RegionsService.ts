@@ -1,37 +1,67 @@
-import { pool } from "../../database/pool.js";
-import { supabase } from "../../database/supabase.js";
-import type { 
-  BairroDTO, 
-  BoundingBox, 
-  DistribuidoraDTO, 
-  EstadoDTO, 
-  MunicipioDTO, 
-  PaginatedResult 
-} from "../../interface/region-repository.js";
+import { pool } from "../database/pool.js";
+import type {
+  BairroDTO,
+  BoundingBox,
+  DistribuidoraDTO,
+  DistribuidoraLocal,
+  EstadoDTO,
+  MunicipioDTO,
+  PaginatedResult,
+} from "../interface/region-repository.js";
+import { RegionsUtils } from "../utils/RegionsUtils.js";
 
-// Funções utilitárias mantidas de forma limpa ou isoladas
-function normalizarNome(valor: string): string {
-  return valor
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
+const ATIVOS_CTE = `
+  WITH ativos AS (
+    SELECT
+      CONCAT('POSTE:', a.id_poste::text) AS id_ativo,
+      pos.municipio,
+      pos.bairro,
+      pos.latitude,
+      pos.longitude,
+      pos.id_distribuidora,
+      COALESCE(a.lote_carga, pos.lote_carga) AS lote_carga,
+      a.registro_atual AND pos.registro_atual AS registro_atual
+    FROM POSTES a
+    JOIN POSICOES_GEOGRAFICAS pos ON pos.id_posicao = a.id_posicao
 
-function nomeDistribuidoraLocal(valor: string): string {
-  return valor.trim().toUpperCase();
-}
+    UNION ALL
 
-interface DistribuidoraLocal {
-  nome: string;
-  totalAtivos: number;
-  latitude: number | null;
-  longitude: number | null;
-}
+    SELECT
+      CONCAT('SUBESTACAO:', a.id_subestacao::text) AS id_ativo,
+      pos.municipio,
+      pos.bairro,
+      pos.latitude,
+      pos.longitude,
+      pos.id_distribuidora,
+      COALESCE(a.lote_carga, pos.lote_carga) AS lote_carga,
+      a.registro_atual AND pos.registro_atual AS registro_atual
+    FROM SUBESTACOES a
+    JOIN POSICOES_GEOGRAFICAS pos ON pos.id_posicao = a.id_posicao
 
-export class RegioesRepository {
-  // Mapeamento de linhas padronizado semelhante ao mapRow do ActiveRepository
-  private mapMunicipioRow(row: {
+    UNION ALL
+
+    SELECT
+      CONCAT('DISPOSITIVO:', a.id_dispositivo::text) AS id_ativo,
+      pos.municipio,
+      pos.bairro,
+      pos.latitude,
+      pos.longitude,
+      pos.id_distribuidora,
+      COALESCE(a.lote_carga, pos.lote_carga) AS lote_carga,
+      a.registro_atual AND pos.registro_atual AS registro_atual
+    FROM DISPOSITIVOS a
+    JOIN POSICOES_GEOGRAFICAS pos ON pos.id_posicao = a.id_posicao
+  )
+`;
+
+export class RegionsService {
+  private regionsUtils: RegionsUtils;
+
+  constructor() {
+    this.regionsUtils = new RegionsUtils();
+  }
+
+  private mapMunRows(row: {
     nome: string;
     uf: string;
     total_ativos: number | string;
@@ -42,8 +72,8 @@ export class RegioesRepository {
       nome: row.nome,
       uf: row.uf,
       totalAtivos: Number(row.total_ativos),
-      lat: row.lat == null ? null : Number(row.lat),
-      lng: row.lng == null ? null : Number(row.lng),
+      lat: row.lat === null ? null : Number(row.lat),
+      lng: row.lng === null ? null : Number(row.lng),
     };
   }
 
@@ -61,7 +91,7 @@ export class RegioesRepository {
     };
   }
 
-  private mapEstadoRow(row: {
+  private mapStateRow(row: {
     uf: string;
     total_municipios: number | string;
     total_ativos: number | string;
@@ -73,19 +103,9 @@ export class RegioesRepository {
     };
   }
 
-  async nomeDaDistribuidora(distribuidoraId: number): Promise<string | undefined> {
-    const { data, error } = await supabase
-      .from("distribuidoras")
-      .select("nome")
-      .eq("id", distribuidoraId)
-      .maybeSingle();
-
-    if (error || !data?.nome) return undefined;
-    return String(data.nome);
-  }
-
   private async municipios(params: {
     distribuidora?: string;
+    uf?: string;
     busca?: string;
     limite: number;
     pagina: number;
@@ -97,10 +117,14 @@ export class RegioesRepository {
       "p.municipio IS NOT NULL",
       "p.municipio ~ '^[0-9]{7}$'",
     ];
-
     if (params.distribuidora?.trim()) {
-      values.push(nomeDistribuidoraLocal(params.distribuidora));
-      conditions.push(`p.distribuidora = $${values.length}`);
+      values.push(params.distribuidora.trim());
+      conditions.push(`UPPER(d.nome) = UPPER($${values.length})`);
+    }
+
+    if (params.uf?.trim()) {
+      values.push(params.uf.trim().toUpperCase());
+      conditions.push(`UPPER(m.uf) = $${values.length}`);
     }
 
     if (params.busca?.trim()) {
@@ -128,15 +152,17 @@ export class RegioesRepository {
     }
 
     const where = conditions.join(" AND ");
-
     const countResult = await pool.query<{ total: number }>(
       `
+      ${ATIVOS_CTE}
       SELECT COUNT(*)::int AS total
       FROM (
         SELECT m.codigo_ibge
-        FROM ativos_rede p
+        FROM ativos p
         JOIN municipios m
           ON m.codigo_ibge::text = p.municipio
+        LEFT JOIN distribuidoras d
+          ON d.id = p.id_distribuidora
         WHERE ${where}
         GROUP BY m.codigo_ibge
       ) AS agrupados
@@ -146,7 +172,6 @@ export class RegioesRepository {
 
     const total = Number(countResult.rows[0]?.total ?? 0);
     const inicio = (params.pagina - 1) * params.limite;
-
     const dataValues = [...values, params.limite, inicio];
     const limiteParam = dataValues.length - 1;
     const offsetParam = dataValues.length;
@@ -159,15 +184,18 @@ export class RegioesRepository {
       lng: number | null;
     }>(
       `
+      ${ATIVOS_CTE}
       SELECT
         m.nome,
         m.uf,
         COUNT(p.id_ativo)::int AS total_ativos,
         AVG(p.latitude) AS lat,
         AVG(p.longitude) AS lng
-      FROM ativos_rede p
+      FROM ativos p
       JOIN municipios m
         ON m.codigo_ibge::text = p.municipio
+      LEFT JOIN distribuidoras d
+        ON d.id = p.id_distribuidora
       WHERE ${where}
       GROUP BY m.codigo_ibge, m.nome, m.uf
       ORDER BY m.nome
@@ -178,7 +206,7 @@ export class RegioesRepository {
     );
 
     return {
-      dados: result.rows.map(this.mapMunicipioRow),
+      dados: result.rows.map(this.mapMunRows),
       paginacao: {
         pagina: params.pagina,
         limite: params.limite,
@@ -188,7 +216,7 @@ export class RegioesRepository {
     };
   }
 
-  private async distribuidorasLocais(): Promise<Map<string, DistribuidoraLocal>> {
+  private async distributorLocals(): Promise<Map<string, DistribuidoraLocal>> {
     try {
       const result = await pool.query<{
         nome: string;
@@ -197,57 +225,62 @@ export class RegioesRepository {
         longitude: number | null;
       }>(
         `
-        SELECT
-          distribuidora AS nome,
-          COUNT(*)::int AS total_ativos,
-          AVG(latitude) AS latitude,
-          AVG(longitude) AS longitude
-        FROM ativos_rede
-        WHERE registro_atual = TRUE
-          AND distribuidora IS NOT NULL
-          AND distribuidora <> ''
-        GROUP BY distribuidora
-        `
+            ${ATIVOS_CTE}
+            SELECT
+            d.nome,
+            COUNT(*)::int AS total_ativos,
+            AVG(p.latitude) AS latitude,
+            AVG(p.longitude) AS longitude
+            FROM ativos p
+            JOIN distribuidoras d ON d.id = p.id_distribuidora
+            WHERE p.registro_atual = TRUE
+            GROUP BY d.id, d.nome
+        `,
       );
 
-      const mapa = new Map<string, DistribuidoraLocal>();
+      const map = new Map<string, DistribuidoraLocal>();
       for (const row of result.rows) {
-        mapa.set(normalizarNome(row.nome), {
+        map.set(this.regionsUtils.normalizeName(row.nome), {
           nome: row.nome,
           totalAtivos: Number(row.total_ativos),
-          latitude: row.latitude == null ? null : Number(row.latitude),
-          longitude: row.longitude == null ? null : Number(row.longitude),
+          latitude: row.latitude === null ? null : Number(row.latitude),
+          longitude: row.longitude === null ? null : Number(row.longitude),
         });
       }
-      return mapa;
-    } catch {
+      return map;
+    } catch (error: any) {
       return new Map();
     }
   }
 
-  async listarDistribuidoras(busca?: string): Promise<DistribuidoraDTO[]> {
-    const termo = busca?.trim().toLowerCase();
-    const [supabaseResult, locais] = await Promise.all([
-      supabase
-        .from("distribuidoras")
-        .select("id, nome, uf, ano_bdgd")
-        .order("nome"),
-      this.distribuidorasLocais(),
+  async distributorName(distributorID: number): Promise<string | undefined> {
+    const result = await pool.query<{ nome: string }>(
+      "SELECT nome FROM distribuidoras WHERE id = $1",
+      [distributorID],
+    );
+    return result.rows[0]?.nome;
+  }
+
+  async listDistributors(busca?: string): Promise<DistribuidoraDTO[]> {
+    const query = `SELECT id, nome, uf, ano_bdgd FROM distribuidoras;`;
+    const termo = busca?.trim().toLocaleLowerCase();
+    const [result, locals] = await Promise.all([
+      pool.query(query),
+      this.distributorLocals(),
     ]);
 
-    const usados = new Set<string>();
-    const resposta: DistribuidoraDTO[] = [];
+    const used = new Set<string>();
+    const answer: DistribuidoraDTO[] = [];
+    if (result.rows[0]) {
+      for (const row of result.rows ?? []) {
+        const name = String(row.nome);
+        const key = this.regionsUtils.normalizeName(name);
+        const local = locals.get(key);
+        used.add(key);
 
-    if (!supabaseResult.error) {
-      for (const row of supabaseResult.data ?? []) {
-        const nomeSupabase = String(row.nome);
-        const chave = normalizarNome(nomeSupabase);
-        const local = locais.get(chave);
-        usados.add(chave);
-
-        resposta.push({
+        answer.push({
           id: Number(row.id),
-          nome: local?.nome ?? nomeSupabase,
+          nome: local?.nome ?? name,
           uf: row.uf ?? null,
           anoBdgd: row.ano_bdgd == null ? null : Number(row.ano_bdgd),
           totalAtivos: local?.totalAtivos ?? 0,
@@ -257,9 +290,9 @@ export class RegioesRepository {
       }
     }
 
-    for (const [chave, local] of locais) {
-      if (usados.has(chave)) continue;
-      resposta.push({
+    for (const [key, local] of locals) {
+      if (used.has(key)) continue;
+      answer.push({
         id: 0,
         nome: local.nome,
         uf: null,
@@ -270,19 +303,20 @@ export class RegioesRepository {
       });
     }
 
-    resposta.sort((a, b) => {
+    answer.sort((a, b) => {
       if (a.totalAtivos !== b.totalAtivos) return b.totalAtivos - a.totalAtivos;
       return a.nome.localeCompare(b.nome, "pt-BR");
     });
 
-    return resposta.filter(
+    return answer.filter(
       (distribuidora) =>
-        !termo || distribuidora.nome.toLowerCase().includes(termo),
+        !termo || distribuidora.nome.toLocaleLowerCase().includes(termo),
     );
   }
 
-  async listarMunicipios(params: {
+  async listMunicipio(params: {
     distribuidora?: string;
+    uf?: string;
     busca?: string;
     limite: number;
     pagina: number;
@@ -291,16 +325,17 @@ export class RegioesRepository {
     return this.municipios(params);
   }
 
-  async buscarMunicipiosGlobal(params: {
-    busca: string;
+  async findGlobalMun(params: {
+    busca?: string;
+    uf?: string;
     limite: number;
     pagina: number;
     bbox?: BoundingBox;
   }): Promise<PaginatedResult<MunicipioDTO>> {
-    return this.municipios({ ...params, busca: params.busca });
+    return this.municipios(params);
   }
 
-  async listarEstados(busca?: string): Promise<EstadoDTO[]> {
+  async listStates(busca?: string): Promise<EstadoDTO[]> {
     const values: unknown[] = [];
     let filtro = "";
 
@@ -316,26 +351,26 @@ export class RegioesRepository {
       total_ativos: number;
     }>(
       `
-      SELECT
-        m.uf,
-        COUNT(DISTINCT m.codigo_ibge)::int AS total_municipios,
-        COUNT(p.id_ativo)::int AS total_ativos
-      FROM ativos_rede p
-      JOIN municipios m
-        ON m.codigo_ibge::text = p.municipio
-      WHERE p.registro_atual = TRUE
-        AND p.municipio ~ '^[0-9]{7}$'
-        ${filtro}
-      GROUP BY m.uf
-      ORDER BY m.uf
+        ${ATIVOS_CTE}
+        SELECT
+          m.uf,
+          COUNT(DISTINCT m.codigo_ibge)::int AS total_municipios,
+          COUNT(p.id_ativo)::int AS total_ativos
+        FROM ativos p
+        JOIN municipios m
+          ON m.codigo_ibge::text = p.municipio
+        WHERE p.registro_atual = TRUE
+          AND p.municipio ~ '^[0-9]{7}$'
+          ${filtro}
+        GROUP BY m.uf
+        ORDER BY m.uf
       `,
       values,
     );
-
-    return result.rows.map(this.mapEstadoRow);
+    return result.rows.map(this.mapStateRow);
   }
 
-  async listarBairros(params: {
+  async listNeighborhood(params: {
     distribuidora?: string;
     municipio?: string;
     busca?: string;
@@ -351,15 +386,13 @@ export class RegioesRepository {
     ];
 
     if (params.distribuidora?.trim()) {
-      values.push(nomeDistribuidoraLocal(params.distribuidora));
-      conditions.push(`p.distribuidora = $${values.length}`);
+      values.push(params.distribuidora.trim());
+      conditions.push(`UPPER(d.nome) = UPPER($${values.length})`);
     }
-
     if (params.municipio?.trim()) {
       values.push(params.municipio.trim());
       conditions.push(`m.nome ILIKE $${values.length}`);
     }
-
     if (params.busca?.trim()) {
       values.push(`%${params.busca.trim()}%`);
       conditions.push(`p.bairro ILIKE $${values.length}`);
@@ -369,12 +402,15 @@ export class RegioesRepository {
 
     const countResult = await pool.query<{ total: number }>(
       `
+      ${ATIVOS_CTE}
       SELECT COUNT(*)::int AS total
       FROM (
         SELECT p.bairro, m.codigo_ibge
-        FROM ativos_rede p
+        FROM ativos p
         JOIN municipios m
           ON m.codigo_ibge::text = p.municipio
+        LEFT JOIN distribuidoras d
+          ON d.id = p.id_distribuidora
         WHERE ${where}
         GROUP BY p.bairro, m.codigo_ibge
       ) AS agrupados
@@ -396,14 +432,17 @@ export class RegioesRepository {
       total_ativos: number;
     }>(
       `
+      ${ATIVOS_CTE}
       SELECT
         p.bairro AS nome,
         m.uf,
         m.nome AS municipio,
         COUNT(p.id_ativo)::int AS total_ativos
-      FROM ativos_rede p
+      FROM ativos p
       JOIN municipios m
         ON m.codigo_ibge::text = p.municipio
+      LEFT JOIN distribuidoras d
+        ON d.id = p.id_distribuidora
       WHERE ${where}
       GROUP BY p.bairro, m.uf, m.nome
       ORDER BY p.bairro
