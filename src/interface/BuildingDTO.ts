@@ -1,20 +1,17 @@
 import type { GeoJsonMultiPolygon, PolygonRings } from "../utils/GeometryUtils.js";
 
-/** Altura: informada pela fonte, calculada pelos pavimentos ou padrão da regra de negócio. */
+
 export type HeightSource =
     | "INFORMADA"
     | "PAVIMENTOS"
     | "PADRAO";
 
-/** Material: informado pela fonte (facade_material) ou o padrão (cimento). */
+
 export type MaterialSource =
     | "INFORMADO"
     | "PADRAO";
 
-/**
- * Edificação consultada sob demanda na Overture Maps. Não é gravada no banco:
- * fica só no cache em memória do BuildingService.
- */
+
 export interface Building {
     id: string;
     fonte: "OVERTURE";
@@ -38,13 +35,12 @@ export interface Building {
     geometria: GeoJsonMultiPolygon;
 }
 
-/** Edificação já tratada, guardada no cache (sem a perda, que depende da frequência). */
+
 export interface CachedBuilding extends Omit<Building, "perda_material_db" | "geometria"> {
     polygons: PolygonRings[];
     bbox: BoundingBoxDTO;
 }
 
-/** Linha lida da Overture Maps (colunas do GeoParquet). */
 export interface OvertureBuildingRow {
     id: string;
     wkb_hex: string;
@@ -73,7 +69,7 @@ export interface ListBuildingsResult {
     versao_fonte: string;
 }
 
-/** Material de construção e a perda por parede, nas frequências de referência. */
+
 export interface BuildingMaterial {
     codigo: string;
     nome: string;
@@ -101,7 +97,7 @@ export interface CalculateObstructionDTO {
     links: LinkDTO[];
 }
 
-/** Edificação cruzada pela linha reta de um enlace. */
+
 export interface BuildingOnLinkRow {
     id: string;
     id_edificacao: string;

@@ -102,7 +102,7 @@ As edificações vêm da [Overture Maps](https://docs.overturemaps.org/guides/bu
 - O catálogo STAC da Overture informa o retângulo de cada arquivo GeoParquet; só os arquivos que tocam a região são lidos (DuckDB em memória). A primeira consulta de uma região leva de 20 a 50 s; as seguintes usam o cache.
 - **Geometria, largura, profundidade e área**: sempre calculadas a partir do contorno (retângulo mínimo).
 - **Altura**: `height` da fonte → `num_floors` × 3 m → `BUILDING_DEFAULT_FLOORS` × 3 m (6 m por padrão). O campo `origem_altura` indica qual regra foi usada (`INFORMADA`, `PAVIMENTOS`, `PADRAO`).
-- **Material**: `facade_material` da fonte quando existe; senão **cimento** (`CIMENTO`), o padrão do projeto. O campo `origem_material` indica `INFORMADO` ou `PADRAO`.
+- **Material**: `facade_material` da fonte quando existe; senão **concreto** (`CONCRETO`), o padrão do projeto. O campo `origem_material` indica `INFORMADO` ou `PADRAO`.
 - Se a fonte estiver fora do ar, `GET /list-buildings` responde 503, e a mancha/recomendação segue sem as edificações, informando o motivo em `buildings_error`.
 
 | Rota | Descrição |

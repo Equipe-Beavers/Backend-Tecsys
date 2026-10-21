@@ -35,13 +35,13 @@ describe("GET /list-buildings", () => {
 });
 
 describe("GET /list-building-materials", () => {
-    it("lista os materiais com cimento como padrão", async () => {
+    it("lista os materiais com concreto como padrão", async () => {
         const app = createTestApp();
         const response = await app.inject({ method: "GET", url: "/list-building-materials" });
         expect(response.statusCode).toBe(200);
         const padrao = response.json().data.filter((m: { padrao: boolean }) => m.padrao);
         expect(padrao).toHaveLength(1);
-        expect(padrao[0].codigo).toBe("CIMENTO");
+        expect(padrao[0].codigo).toBe("CONCRETO");
         await app.close();
     });
 });
@@ -88,7 +88,7 @@ describe("GET /get-scenario-coverage/:id", () => {
 describe("rotas que gravavam edificações no banco", () => {
     it("não existem mais", async () => {
         const app = createTestApp();
-        for (const [method, url] of [["POST", "/import-buildings"], ["PATCH", "/update-building/1"], ["PATCH", "/update-building-material/CIMENTO"]] as const) {
+        for (const [method, url] of [["POST", "/import-buildings"], ["PATCH", "/update-building/1"], ["PATCH", "/update-building-material/CONCRETO"]] as const) {
             const response = await app.inject({ method, url, payload: {} });
             expect(response.statusCode).toBe(404);
         }

@@ -4,7 +4,6 @@ import { BuildingUtils } from "../src/utils/BuildingUtils.js";
 
 const utils = new BuildingUtils();
 
-/** WKB (little endian) de um Polygon com um anel. */
 function polygonWkb(ring: [number, number][]): string {
     const buffer = Buffer.alloc(1 + 4 + 4 + 4 + ring.length * 16);
     let offset = 0;
@@ -40,15 +39,17 @@ describe("BuildingUtils.ClassifyMaterial", () => {
         expect(utils.ClassifyMaterial("Glass")).toEqual({ code: "VIDRO", source: "INFORMADO" });
     });
 
-    it("sem material (ou material desconhecido), usa cimento", () => {
-        expect(utils.ClassifyMaterial(null)).toEqual({ code: "CIMENTO", source: "PADRAO" });
-        expect(utils.ClassifyMaterial("unobtainium")).toEqual({ code: "CIMENTO", source: "PADRAO" });
+    it("sem material (ou material desconhecido), usa concreto", () => {
+        expect(utils.ClassifyMaterial(null)).toEqual({ code: "CONCRETO", source: "PADRAO" });
+        expect(utils.ClassifyMaterial("unobtainium")).toEqual({ code: "CONCRETO", source: "PADRAO" });
+        expect(utils.ClassifyMaterial("concrete")).toEqual({ code: "CONCRETO", source: "INFORMADO" });
+        expect(utils.ClassifyMaterial("cement_block")).toEqual({ code: "CONCRETO", source: "INFORMADO" });
     });
 
     it("interpola a perda do material em log(f)", () => {
-        expect(utils.MaterialLossDb("CIMENTO", 900)).toBeCloseTo(12);
-        expect(utils.MaterialLossDb("CIMENTO", 2400)).toBeCloseTo(17);
-        expect(utils.MaterialLossDb("CIMENTO", 915)).toBeGreaterThan(12);
+        expect(utils.MaterialLossDb("CONCRETO", 900)).toBeCloseTo(12);
+        expect(utils.MaterialLossDb("CONCRETO", 2400)).toBeCloseTo(17);
+        expect(utils.MaterialLossDb("CONCRETO", 915)).toBeGreaterThan(12);
     });
 });
 
@@ -69,7 +70,7 @@ describe("BuildingUtils.Normalize", () => {
         expect(building.profundidade_m).toBeCloseTo(20, 0);
         expect(building.area_m2).toBeCloseTo(200, -1);
         expect(building.altura_m).toBe(9);
-        expect(building.codigo_material).toBe("CIMENTO");
+        expect(building.codigo_material).toBe("CONCRETO");
         expect(building.origem_material).toBe("PADRAO");
         expect(building.latitude).toBeCloseTo(-23.2 + dLat / 2, 6);
     });

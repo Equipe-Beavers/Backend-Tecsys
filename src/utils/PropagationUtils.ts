@@ -6,11 +6,8 @@ import type {
 import type { PerfilRf } from "../interface/perfil-rf.js";
 
 const EARTH_RADIUS_M = 6371000;
-/** Perda dentro da edificação por metro percorrido (ordem de grandeza da COST 231 indoor). */
 const INTERIOR_LOSS_DB_PER_M = 0.6;
-/** Limite da busca de alcance, em metros. */
 const MAX_RANGE_M = 30000;
-/** Menor distância usada nos modelos empíricos, em km. */
 const MIN_DISTANCE_KM = 0.02;
 
 const ENVIRONMENTS: Record<string, PropagationEnvironment> = {
@@ -26,19 +23,13 @@ interface Edge {
     height: number;
 }
 
-/**
- * Funções de propagação usadas pelo PropagationService:
- * - perda de percurso: Okumura-Hata (até 1500 MHz) ou COST-231 Hata (acima), nunca menor que o espaço livre;
- * - edificações: difração sobre os telhados (ITU-R P.526, método de Deygout) ou penetração
- *   pelas paredes (material + trecho interno), o que der menor perda.
- */
+
 export class PropagationUtils {
     NumberOr(value: unknown, fallback: number): number {
         const parsed = typeof value === "string" ? Number(value) : value;
         return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : fallback;
     }
 
-    /** Monta os parâmetros do cálculo a partir do perfil RF, com valores padrão para o que não foi informado. */
     BuildParameters(profile: PerfilRf, gatewayHeightM?: number): PropagationParameters {
         const antenna = (profile.caracteristicas_antena ?? {}) as Record<string, unknown>;
         const extra = (profile.parametros_adicionais ?? {}) as Record<string, unknown>;
@@ -60,7 +51,6 @@ export class PropagationUtils {
         };
     }
 
-    /** Maior perda de percurso que o enlace suporta: P_tx + ganhos − cabos − margem − sensibilidade. */
     MaxPathLossDb(params: PropagationParameters): number {
         return (
             params.txPowerDbm +
@@ -85,7 +75,6 @@ export class PropagationUtils {
         return 20 * Math.log10(km) + 20 * Math.log10(frequencyMhz) + 32.44;
     }
 
-    /** Okumura-Hata (150–1500 MHz) ou COST-231 Hata (acima de 1500 MHz), cidade pequena/média. */
     HataLossDb(
         distanceM: number,
         frequencyMhz: number,
@@ -108,11 +97,6 @@ export class PropagationUtils {
         return urban;
     }
 
-    /**
-     * Perda de percurso sem as edificações.
-     * Com as edificações consideradas uma a uma, usa o Hata de área aberta (rural) como base,
-     * para não contar os prédios duas vezes (o Hata urbano já embute a perda média dos prédios).
-     */
     PathLossDb(distanceM: number, params: PropagationParameters, explicitBuildings: boolean): number {
         const environment = explicitBuildings ? "rural" : params.environment;
         const hata = this.HataLossDb(
@@ -125,7 +109,6 @@ export class PropagationUtils {
         return Math.max(hata, this.FreeSpaceLossDb(distanceM, params.frequencyMhz));
     }
 
-    /** Maior distância em que a perda de percurso (sem edificações) ainda cabe no balanço. */
     MaxRangeM(params: PropagationParameters, explicitBuildings: boolean): number {
         const budget = this.MaxPathLossDb(params);
         let low = 0;
@@ -177,12 +160,6 @@ export class PropagationUtils {
         );
     }
 
-    /**
-     * Perda extra causada pelas edificações entre o gateway e um ponto a `distanceM` metros.
-     * Se nenhuma edificação bloqueia a linha de visada, só conta a difração (obstrução parcial da
-     * zona de Fresnel). Se alguma bloqueia, o sinal segue o caminho mais fácil: por cima dos
-     * telhados (difração) ou através das paredes (penetração).
-     */
     BuildingsLossDb(obstacles: BuildingObstacle[], distanceM: number, params: PropagationParameters): number {
         const wavelengthM = 299.792458 / params.frequencyMhz;
         const start = { x: 0, height: params.gatewayHeightM };
@@ -212,7 +189,6 @@ export class PropagationUtils {
         return blocked ? Math.min(diffractionDb, penetrationDb) : diffractionDb;
     }
 
-    /** Ponto a `distanceM` metros na direção `bearingDeg` (0° = norte, sentido horário). */
     Destination(latitude: number, longitude: number, bearingDeg: number, distanceM: number) {
         const rad = Math.PI / 180;
         const angular = distanceM / EARTH_RADIUS_M;

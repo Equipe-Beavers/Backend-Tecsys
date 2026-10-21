@@ -9,7 +9,7 @@ const LAT = -23.2;
 const LON = -45.9;
 const projector = geometry.Projector(LAT, LON);
 
-/** Quadrado de `side` metros com o canto sudoeste em (x, y) metros do ponto de referência. */
+
 function square(id: string, x: number, y: number, side: number, heightM = 12): CachedBuilding {
     const corners = [[x, y], [x + side, y], [x + side, y + side], [x, y + side], [x, y]]
         .map(([px, py]) => projector.toGeo({ x: px!, y: py! }))
@@ -20,7 +20,7 @@ function square(id: string, x: number, y: number, side: number, heightM = 12): C
         id, fonte: "OVERTURE", fonte_original: null, versao_fonte: "test", subtipo: null, classe: null,
         altura_m: heightM, origem_altura: "INFORMADA", pavimentos: null,
         largura_m: side, profundidade_m: side, area_m2: side * side,
-        codigo_material: "CIMENTO", nome_material: "Cimento / concreto", origem_material: "PADRAO",
+        codigo_material: "CONCRETO", nome_material: "Concreto", origem_material: "PADRAO",
         material_fachada_original: null, latitude: LAT, longitude: LON,
         polygons: [[corners]],
         bbox: { minLatitude: Math.min(...lats), maxLatitude: Math.max(...lats), minLongitude: Math.min(...lons), maxLongitude: Math.max(...lons) },

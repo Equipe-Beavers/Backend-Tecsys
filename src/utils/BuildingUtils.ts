@@ -8,27 +8,23 @@ import type {
 } from "../interface/BuildingDTO.js";
 import { GeometryUtils } from "./GeometryUtils.js";
 
-/** Altura de um pavimento usada para converter `num_floors` em metros. */
-export const HEIGHT_PER_FLOOR_M = 3;
-/** Material usado quando a fonte não informa o material (regra de negócio do projeto). */
-export const DEFAULT_MATERIAL_CODE = "CIMENTO";
 
-/**
- * Perda por parede (dB) a 900 e 2400 MHz. Valores de referência (ordem de grandeza da
- * ITU-R P.2040 / COST 231); ajuste com medições de campo quando houver.
- */
+export const HEIGHT_PER_FLOOR_M = 3;
+
+export const DEFAULT_MATERIAL_CODE = "CONCRETO";
+
+
 export const BUILDING_MATERIALS: BuildingMaterial[] = [
-    { codigo: "CIMENTO", nome: "Cimento / concreto", descricao: "Estruturas, blocos e lajes de cimento/concreto. Material padrão quando a fonte não informa.", perda_db_900mhz: 12, perda_db_2400mhz: 17, padrao: true },
+    { codigo: "CONCRETO", nome: "Concreto", descricao: "Estruturas, blocos e lajes de concreto. Material padrão quando a fonte não informa.", perda_db_900mhz: 12, perda_db_2400mhz: 17, padrao: true },
     { codigo: "ALVENARIA", nome: "Alvenaria", descricao: "Tijolo cerâmico, pedra ou reboco.", perda_db_900mhz: 7, perda_db_2400mhz: 10, padrao: false },
     { codigo: "METAL", nome: "Metálico", descricao: "Fachadas e coberturas metálicas.", perda_db_900mhz: 25, perda_db_2400mhz: 30, padrao: false },
     { codigo: "VIDRO", nome: "Vidro", descricao: "Fachadas de vidro comum.", perda_db_900mhz: 2, perda_db_2400mhz: 3, padrao: false },
     { codigo: "MADEIRA", nome: "Madeira / material leve", descricao: "Madeira, plástico e outras construções leves.", perda_db_900mhz: 3, perda_db_2400mhz: 5, padrao: false },
 ];
 
-/** facade_material da Overture (vem do OSM building:material) → código do material. */
 const FACADE_MATERIALS: Record<string, string> = {
-    concrete: "CIMENTO",
-    cement_block: "CIMENTO",
+    concrete: "CONCRETO",
+    cement_block: "CONCRETO",
     brick: "ALVENARIA",
     clay: "ALVENARIA",
     plaster: "ALVENARIA",
@@ -42,7 +38,6 @@ const FACADE_MATERIALS: Record<string, string> = {
 
 const MATERIALS_BY_CODE = new Map(BUILDING_MATERIALS.map((material) => [material.codigo, material]));
 
-/** Regras de altura, material e dimensões aplicadas às edificações vindas da fonte externa. */
 export class BuildingUtils {
     private geometryUtils = new GeometryUtils();
 
@@ -52,10 +47,7 @@ export class BuildingUtils {
         return value;
     }
 
-    /**
-     * Altura informada → pavimentos × 3 m → `defaultFloors` × 3 m (regra padrão).
-     * A origem sempre acompanha o valor, para o frontend saber o que é estimado.
-     */
+
     EstimateHeight(
         height: number | null,
         floors: number | null,
@@ -74,7 +66,7 @@ export class BuildingUtils {
         return { heightM: defaultFloors * HEIGHT_PER_FLOOR_M, source: "PADRAO", floors: null };
     }
 
-    /** Material informado pela fonte; sem ele, cimento (padrão do projeto). Nada é deduzido do tipo. */
+
     ClassifyMaterial(facade: string | null): { code: string; source: MaterialSource } {
         const facadeCode = facade ? FACADE_MATERIALS[facade.trim().toLowerCase()] : undefined;
         if (facadeCode) return { code: facadeCode, source: "INFORMADO" };
@@ -85,17 +77,12 @@ export class BuildingUtils {
         return MATERIALS_BY_CODE.get(code) ?? MATERIALS_BY_CODE.get(DEFAULT_MATERIAL_CODE)!;
     }
 
-    /** Perda do material na frequência pedida, interpolando em log(f) entre 900 e 2400 MHz. */
     MaterialLossDb(code: string, frequencyMhz: number): number {
         const material = this.Material(code);
         const fraction = Math.log(Math.max(frequencyMhz, 1) / 900) / Math.log(2400 / 900);
         return Math.max(0, material.perda_db_900mhz + (material.perda_db_2400mhz - material.perda_db_900mhz) * fraction);
     }
 
-    /**
-     * Valida e normaliza uma linha da Overture. Largura, profundidade e área saem da geometria
-     * (retângulo mínimo). Geometria inválida ou vazia devolve null.
-     */
     Normalize(row: OvertureBuildingRow, release: string, defaultFloors: number): CachedBuilding | null {
         const polygons = this.geometryUtils.ParseWkbPolygons(row.wkb_hex);
         if (polygons.length === 0) return null;
@@ -116,7 +103,7 @@ export class BuildingUtils {
         if (areaM2 <= 0) return null;
         const { width, depth } = this.geometryUtils.MinimumRectangle(local.flatMap((rings) => rings[0]!));
 
-        // Centroide do maior polígono (o anel externo basta para posicionar a edificação).
+
         const largest = local.reduce((a, b) => (Math.abs(this.geometryUtils.SignedArea(b[0]!)) > Math.abs(this.geometryUtils.SignedArea(a[0]!)) ? b : a));
         const center = this.Centroid(largest[0]!);
         const centerGeo = projector.toGeo(center);
@@ -164,7 +151,6 @@ export class BuildingUtils {
         return { x: cx / (6 * area), y: cy / (6 * area) };
     }
 
-    /** Chaves da grade fixa de cache que cobrem a área (alinhadas, para reaproveitar entre requisições). */
     TileKeys(area: BoundingBoxDTO, size: number): string[] {
         const keys: string[] = [];
         for (let col = Math.floor(area.minLongitude / size); col <= Math.floor(area.maxLongitude / size); col++) {
@@ -189,8 +175,6 @@ export class BuildingUtils {
         return a.minLongitude <= b.maxLongitude && a.maxLongitude >= b.minLongitude
             && a.minLatitude <= b.maxLatitude && a.maxLatitude >= b.minLatitude;
     }
-
-    /** Área quadrada de `radiusM` metros em volta de um ponto. */
     AroundPoint(latitude: number, longitude: number, radiusM: number): BoundingBoxDTO {
         const dLat = radiusM / 111320;
         const dLon = radiusM / (111320 * Math.max(Math.cos((latitude * Math.PI) / 180), 0.01));

@@ -4,21 +4,14 @@ import type { BoundingBoxDTO, OvertureBuildingRow } from "../interface/BuildingD
 
 const STAC_TIMEOUT_MS = 20000;
 const STAC_RETRIES = 2;
-/** Por quanto tempo a release "mais recente" do STAC é reaproveitada. */
 const LATEST_RELEASE_TTL_MS = 6 * 60 * 60 * 1000;
 
-/** Falha da fonte externa (rede, timeout, limite de requisições). Vira HTTP 503. */
+
 export class BuildingSourceError extends Error {
     statusCode = 503;
 }
 
-/**
- * Leitura das edificações da Overture Maps (GeoParquet público na AWS), sob demanda.
- *
- * Para não varrer os ~500 arquivos globais (leva minutos), o catálogo STAC da Overture informa o
- * retângulo de cada arquivo; só os arquivos que tocam a área são lidos pelo DuckDB em memória,
- * que ainda filtra os row groups pela coluna `bbox`. Nada é gravado em disco nem no banco.
- */
+
 export class OvertureService {
     private static connection: Promise<DuckDBConnection> | null = null;
     private static queue: Promise<unknown> = Promise.resolve();
@@ -34,10 +27,10 @@ export class OvertureService {
         await duckdb.run("SET enable_http_metadata_cache=true;");
         await duckdb.run("SET enable_object_cache=true;");
         try {
-            // Lê a geometria como WKB puro, sem depender da extensão spatial.
+
             await duckdb.run("SET enable_geoparquet_conversion=false;");
         } catch {
-            // Versões antigas do DuckDB não têm essa opção.
+
         }
         return duckdb;
     }
@@ -57,7 +50,7 @@ export class OvertureService {
                 const response = await fetch(url, { signal: AbortSignal.timeout(STAC_TIMEOUT_MS) });
                 if (response.ok) return (await response.json()) as T;
                 lastError = new Error(`HTTP ${response.status}`);
-                // Só vale tentar de novo em limite de requisições ou erro do servidor.
+
                 if (response.status !== 429 && response.status < 500) break;
             } catch (error) {
                 lastError = error;
@@ -68,7 +61,7 @@ export class OvertureService {
         throw new BuildingSourceError(`Catálogo da Overture Maps indisponível (${reason}).`);
     }
 
-    /** Release do .env (OVERTURE_RELEASE) ou a mais recente do catálogo STAC. */
+
     async getRelease(): Promise<string> {
         if (env.buildings.release) return env.buildings.release;
         const cached = OvertureService.latest;
@@ -80,7 +73,6 @@ export class OvertureService {
         return catalog.latest;
     }
 
-    /** Retângulo [xmin, ymin, xmax, ymax] de cada arquivo de edificações da release. */
     private getFileBoxes(release: string): Promise<number[][]> {
         let boxes = OvertureService.fileBoxes.get(release);
         if (!boxes) {
@@ -107,7 +99,7 @@ export class OvertureService {
         return href;
     }
 
-    /** Arquivos GeoParquet que tocam a área. */
+
     async findFiles(release: string, area: BoundingBoxDTO): Promise<string[]> {
         const boxes = await this.getFileBoxes(release);
         const indexes = boxes
@@ -119,7 +111,6 @@ export class OvertureService {
         return Promise.all(indexes.map((index) => this.getFileHref(release, index)));
     }
 
-    /** Uma consulta por vez na conexão DuckDB, com tempo limite. */
     private enqueue<T>(task: (duckdb: DuckDBConnection) => Promise<T>): Promise<T> {
         const run = OvertureService.queue.then(async () => {
             const duckdb = await this.getConnection();
@@ -142,7 +133,7 @@ export class OvertureService {
         return run;
     }
 
-    /** Edificações (acima do solo) cujo retângulo toca a área. */
+
     async readBuildings(release: string, area: BoundingBoxDTO): Promise<OvertureBuildingRow[]> {
         const files = await this.findFiles(release, area);
         if (files.length === 0) return [];

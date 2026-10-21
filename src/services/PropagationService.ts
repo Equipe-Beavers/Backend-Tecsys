@@ -39,18 +39,12 @@ export class PropagationService {
         return this.propagationUtils.BuildParameters(profile, gatewayHeightM);
     }
 
-    /**
-     * Edificações em volta do gateway, consultadas sob demanda na Overture Maps.
-     * Devolve null quando o perfil não considera edificações. Se a fonte falhar, `index` vem
-     * nulo e o cálculo usa o Hata do ambiente do perfil.
-     */
     async loadBuildings(
         params: PropagationParameters,
         latitude: number,
         longitude: number,
     ): Promise<BuildingsAround | null> {
         if (!params.considerBuildings) return null;
-        // Alcance com o modelo de área aberta: o maior possível quando há edificações.
         const rangeM = this.propagationUtils.MaxRangeM(params, true);
         return this.buildingService.loadBuildingsAround(latitude, longitude, rangeM);
     }
@@ -62,12 +56,7 @@ export class PropagationService {
             : `${hata} (${params.environment})`;
     }
 
-    /**
-     * Perda de percurso e perda das edificações a `distanceM` do gateway.
-     * Fora do raio em que as edificações foram carregadas não se sabe o que há no caminho:
-     * vale no mínimo o Hata do ambiente do perfil, para a mancha não "escapar" pelo modelo
-     * de área aberta.
-     */
+
     linkLossDb(
         distanceM: number,
         params: PropagationParameters,
@@ -86,7 +75,6 @@ export class PropagationService {
         return { pathLossDb, buildingsLossDb };
     }
 
-    /** Sinal do gateway em cada ponto, considerando as edificações entre eles. */
     async calculateLinks(
         gateway: { latitude: number; longitude: number },
         points: PropagationPoint[],

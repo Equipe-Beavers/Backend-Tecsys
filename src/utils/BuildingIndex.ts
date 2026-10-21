@@ -13,11 +13,7 @@ interface IndexedBuilding {
     maxY: number;
 }
 
-/**
- * Índice em grade (células de 50 m) das edificações de uma região, num plano local em metros.
- * Encontra as edificações cruzadas pela linha reta de cada enlace — o que antes era feito
- * com ST_Intersects/ST_Intersection no banco.
- */
+
 export class BuildingIndex {
     private geometryUtils = new GeometryUtils();
     private buildingUtils = new BuildingUtils();
@@ -54,7 +50,7 @@ export class BuildingIndex {
         }
     }
 
-    /** Células atravessadas pelo segmento (percurso em grade de Amanatides & Woo). */
+
     private cellsOnSegment(start: LocalPoint, end: LocalPoint): string[] {
         let cx = Math.floor(start.x / CELL_SIZE_M);
         let cy = Math.floor(start.y / CELL_SIZE_M);
@@ -84,11 +80,7 @@ export class BuildingIndex {
         return keys;
     }
 
-    /**
-     * Edificações cruzadas pela linha reta de cada enlace, ordenadas pela distância da origem.
-     * `distancia_origem_m`: onde a linha entra na edificação; `trecho_m`: comprimento dentro dela;
-     * `altura_linha_m`: altura da linha de visada nesse ponto (sem relevo).
-     */
+
     Crossings(links: LinkDTO[], frequencyMhz: number): BuildingOnLinkRow[] {
         const rows: BuildingOnLinkRow[] = [];
         const lossByMaterial = new Map<string, number>();

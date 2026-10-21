@@ -18,17 +18,12 @@ import { GeometryUtils } from "../utils/GeometryUtils.js";
 import { PropagationUtils } from "../utils/PropagationUtils.js";
 import { BuildingSourceError, OvertureService } from "./OvertureService.js";
 
-/** Frequência usada quando a requisição não informa uma (LoRaWAN AU915 no Brasil). */
 const DEFAULT_FREQUENCY_MHZ = 915;
 const DEFAULT_LIMIT = 1000;
 const DEFAULT_MAX_LOSS_DB = 40;
-/** Evita consultar uma cidade inteira numa só requisição (~0,1° ≈ 11 km). */
 const MAX_BBOX_SIDE_DEGREES = 0.1;
-/** Maior área coberta pelos enlaces de uma requisição de obstrução (~0,3° ≈ 33 km). */
 const MAX_LINKS_SIDE_DEGREES = 0.3;
-/** Lado das células do cache (~2,2 km). A grade é fixa para reaproveitar entre requisições. */
 const TILE_SIZE_DEGREES = 0.02;
-/** Folga para pegar edificações cujo centro fica na célula vizinha (~200 m). */
 const TILE_MARGIN_DEGREES = 0.002;
 
 interface CacheEntry {
@@ -37,7 +32,6 @@ interface CacheEntry {
     loadedAt: number;
 }
 
-/** Resultado do carregamento das edificações em volta de um gateway. */
 export interface BuildingsAround {
     index: BuildingIndex | null;
     radiusM: number;
@@ -45,14 +39,6 @@ export interface BuildingsAround {
     error: string | null;
 }
 
-/**
- * Edificações consultadas sob demanda na Overture Maps e tratadas aqui no backend
- * (altura, largura, profundidade, material com padrão cimento).
- *
- * Nada é gravado no banco: os dados ficam apenas num cache em memória, com validade
- * (BUILDINGS_CACHE_TTL_MIN) e limite de tamanho (BUILDINGS_CACHE_MAX), e são descartados
- * quando o servidor reinicia.
- */
 export class BuildingService {
     private static cache = new Map<string, CacheEntry>();
     private static cachedCount = 0;
@@ -89,7 +75,7 @@ export class BuildingService {
             BuildingService.cachedCount -= entry.buildings.length;
             return null;
         }
-        // Reinsere para a ordem do Map funcionar como LRU.
+
         BuildingService.cache.delete(key);
         BuildingService.cache.set(key, entry);
         return entry;
@@ -108,7 +94,6 @@ export class BuildingService {
         }
     }
 
-    /** Busca na Overture, de uma vez, as células que ainda não estão no cache. */
     private async loadTiles(keys: string[]): Promise<void> {
         const release = await this.overtureService.getRelease();
         const bounds = keys.map((key) => this.buildingUtils.TileBounds(key, TILE_SIZE_DEGREES));
@@ -125,7 +110,6 @@ export class BuildingService {
         for (const row of rows) {
             const building = this.buildingUtils.Normalize(row, release, env.buildings.defaultFloors);
             if (!building) continue;
-            // Cada edificação fica numa célula só: a do centro do seu retângulo.
             const centerLon = (building.bbox.minLongitude + building.bbox.maxLongitude) / 2;
             const centerLat = (building.bbox.minLatitude + building.bbox.maxLatitude) / 2;
             const key = `${Math.floor(centerLon / TILE_SIZE_DEGREES)}:${Math.floor(centerLat / TILE_SIZE_DEGREES)}`;
@@ -136,7 +120,6 @@ export class BuildingService {
         for (const [key, buildings] of byTile) this.store(key, { buildings, release, loadedAt });
     }
 
-    /** Edificações da área, vindas do cache ou da Overture (só as células que faltam). */
     async getBuildingsInArea(area: BoundingBoxDTO): Promise<{ buildings: CachedBuilding[]; release: string }> {
         const expanded: BoundingBoxDTO = {
             minLatitude: area.minLatitude - TILE_MARGIN_DEGREES,
@@ -209,11 +192,7 @@ export class BuildingService {
         return new BuildingIndex(buildings, latitude, longitude);
     }
 
-    /**
-     * Edificações em volta de um gateway para o cálculo de propagação, num raio de até
-     * BUILDINGS_MAX_RADIUS_M. Se a fonte falhar, o cálculo segue sem as edificações e o motivo
-     * vai na resposta.
-     */
+
     async loadBuildingsAround(latitude: number, longitude: number, rangeM: number): Promise<BuildingsAround> {
         const radiusM = Math.max(1, Math.min(rangeM, env.buildings.maxRadiusM));
         try {
@@ -226,7 +205,6 @@ export class BuildingService {
         }
     }
 
-    /** Converte os cruzamentos em obstáculos agrupados por enlace. */
     groupObstaclesByLink(rows: BuildingOnLinkRow[]): Map<string, BuildingObstacle[]> {
         const byLink = new Map<string, BuildingObstacle[]>();
         for (const row of rows) {
@@ -242,11 +220,6 @@ export class BuildingService {
         return byLink;
     }
 
-    /**
-     * Perda extra causada por edificações em cada enlace, com o mesmo modelo da mancha de
-     * propagação (PropagationUtils.BuildingsLossDb). `loss_db` de cada edificação é a perda
-     * para atravessá-la.
-     */
     async calculateBuildingObstruction(obstructionData: CalculateObstructionDTO): Promise<LinkObstruction[]> {
         const ids = obstructionData.links.map((link) => link.id);
         if (new Set(ids).size !== ids.length) {

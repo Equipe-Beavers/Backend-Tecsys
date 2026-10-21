@@ -1,9 +1,7 @@
 const EARTH_RADIUS_M = 6371000;
 const RAD = Math.PI / 180;
 
-/** Anel de um polígono: lista de [longitude, latitude]. */
 export type Ring = [number, number][];
-/** Polígono: anel externo seguido dos buracos. */
 export type PolygonRings = Ring[];
 
 export interface GeoJsonMultiPolygon {
@@ -11,16 +9,11 @@ export interface GeoJsonMultiPolygon {
     coordinates: number[][][][];
 }
 
-/** Ponto em metros num plano local (x para leste, y para norte). */
 export interface LocalPoint {
     x: number;
     y: number;
 }
 
-/**
- * Geometria das edificações sem depender do PostGIS: leitura de WKB, projeção local em metros,
- * área, retângulo mínimo (largura × profundidade) e cruzamento de segmento com polígono.
- */
 export class GeometryUtils {
     /** Lê um WKB (hex) de Polygon ou MultiPolygon 2D. Outros tipos devolvem lista vazia. */
     ParseWkbPolygons(hex: string): PolygonRings[] {
@@ -42,7 +35,6 @@ export class GeometryUtils {
             };
 
             const rawType = readUInt32();
-            // ISO (1000/2000/3000) e EWKB (flags nos bits altos): só os 2 primeiros valores importam.
             const hasZ = (rawType & 0x80000000) !== 0 || (rawType % 10000 >= 1000 && rawType % 10000 < 2000) || rawType % 10000 >= 3000;
             const hasM = (rawType & 0x40000000) !== 0 || rawType % 10000 >= 2000;
             if ((rawType & 0x20000000) !== 0) offset += 4; // SRID do EWKB
@@ -92,7 +84,6 @@ export class GeometryUtils {
         };
     }
 
-    /** Projeção equirretangular em volta de `origin` (erro desprezível para alguns quilômetros). */
     Projector(originLatitude: number, originLongitude: number) {
         const cosLat = Math.cos(originLatitude * RAD);
         return {
@@ -107,7 +98,7 @@ export class GeometryUtils {
         };
     }
 
-    /** Área com sinal (positiva no sentido anti-horário). */
+
     SignedArea(ring: LocalPoint[]): number {
         let sum = 0;
         for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -137,10 +128,7 @@ export class GeometryUtils {
         return lower.concat(upper);
     }
 
-    /**
-     * Retângulo de menor área que envolve os pontos (rotating calipers sobre o fecho convexo).
-     * Devolve os lados: `width` é o menor e `depth` o maior.
-     */
+
     MinimumRectangle(points: LocalPoint[]): { width: number; depth: number } {
         const hull = this.ConvexHull(points);
         if (hull.length < 3) return { width: 0, depth: 0 };
@@ -170,7 +158,6 @@ export class GeometryUtils {
         return { width: best.width, depth: best.depth };
     }
 
-    /** Ponto dentro dos anéis pela regra par-ímpar (os buracos ficam de fora). */
     PointInRings(point: LocalPoint, rings: LocalPoint[][]): boolean {
         let inside = false;
         for (const ring of rings) {
@@ -185,10 +172,6 @@ export class GeometryUtils {
         return inside;
     }
 
-    /**
-     * Trechos do segmento `start → end` dentro dos anéis, como frações [t0, t1] do segmento.
-     * Mesmo resultado de ST_Intersection(linha, edificação) no PostGIS.
-     */
     SegmentInsideIntervals(start: LocalPoint, end: LocalPoint, rings: LocalPoint[][]): [number, number][] {
         const dx = end.x - start.x;
         const dy = end.y - start.y;
