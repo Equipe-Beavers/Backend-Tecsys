@@ -129,12 +129,7 @@ export class PropagationService {
         return result;
     }
 
-    /**
-     * Mancha de cobertura pelo método radial: a partir do gateway são traçados `rays` raios;
-     * em cada um o sinal é calculado em passos até o primeiro ponto sem cobertura.
-     * Os pontos-limite de todos os raios formam o polígono.
-     * `buildingsInput` reaproveita edificações já carregadas (undefined = carregar agora).
-     */
+
     async buildCoverage(
         latitude: number,
         longitude: number,
@@ -178,7 +173,6 @@ export class PropagationService {
             return { bearing, reachM };
         });
 
-        // Anel no sentido anti-horário, fechado no primeiro ponto (GeoJSON).
         const ring = [...reaches].reverse().map(({ bearing, reachM }) => {
             const point = this.propagationUtils.Destination(latitude, longitude, bearing, Math.max(reachM, 1));
             return [Number(point.longitude.toFixed(7)), Number(point.latitude.toFixed(7))];
@@ -201,7 +195,6 @@ export class PropagationService {
         };
     }
 
-    /** Mancha de um gateway avulso, a partir de um perfil RF cadastrado. */
     async generateCoverage(input: GenerateCoverageDTO): Promise<Coverage> {
         const { data: profile, error } = await supabase
             .from("perfis_rf")
@@ -231,14 +224,10 @@ export class PropagationService {
             }),
         ]);
     }
-
-    /** Une as manchas dos gateways do cenário em `cenarios.mancha_consolidada`. */
     async saveScenarioCoverage(idScenario: number): Promise<Record<string, unknown> | null> {
         const result = await pool.query(updateScenarioCoverageQuery, [idScenario]);
         return result.rows[0]?.mancha_consolidada ?? null;
     }
-
-    /** Manchas salvas de um cenário, para exibir no mapa ou reabrir o estudo. */
     async getScenarioCoverage(idScenario: number): Promise<ScenarioCoverage> {
         const scenario = await pool.query(findScenarioCoverageQuery, [idScenario]);
         if (scenario.rows.length === 0) throw new Error("Cenário não encontrado.");

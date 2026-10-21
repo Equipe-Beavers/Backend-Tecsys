@@ -3,7 +3,6 @@ export type PropagationEnvironment =
     | "suburban"
     | "rural";
 
-/** Parâmetros do balanço de potência, montados a partir do perfil RF. */
 export interface PropagationParameters {
     frequencyMhz: number;
     txPowerDbm: number;
@@ -19,7 +18,6 @@ export interface PropagationParameters {
     estimatedRangeM: number | null;
 }
 
-/** Edificação cruzada por um enlace, medida a partir do gateway. */
 export interface BuildingObstacle {
     entryDistanceM: number;
     insideLengthM: number;
@@ -52,11 +50,8 @@ export interface Coverage {
     model: string;
     environment: PropagationEnvironment;
     buildings_considered: boolean;
-    /** Edificações da Overture Maps usadas no cálculo. */
     buildings_count: number;
-    /** Raio em volta do gateway em que as edificações foram consideradas. */
     buildings_radius_m: number | null;
-    /** Por que as edificações não entraram (fonte indisponível, por exemplo). */
     buildings_error: string | null;
     rays: number;
 }
@@ -68,8 +63,6 @@ export interface GenerateCoverageDTO {
     gateway_height_m?: number;
     rays?: number;
 }
-
-/** Mancha salva de um gateway do cenário (nomes das colunas do banco). */
 export interface GatewayCoverage {
     id_cenario_gateway: number;
     id_estudo_ponto: number;

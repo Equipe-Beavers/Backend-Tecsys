@@ -63,8 +63,6 @@ export class RecommendationService {
         `O estudo não possui nenhum ponto de interesse (papel interesse ou ambos).`,
       );
 
-    // Propagação: para cada candidato, quais pontos de interesse ele cobre (com as edificações).
-    // As edificações são consultadas sob demanda (Overture Maps) e ficam só no cache em memória.
     const params = this.propagationService.buildParameters(rf as PerfilRf);
     const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
     const propagationPoints = interestPoints.map((p) => ({
@@ -73,8 +71,6 @@ export class RecommendationService {
       longitude: Number(p.longitude),
     }));
     const coverage = new Map<number, AtendimentoCalculado[]>();
-    // Só guarda as falhas da fonte, para a mancha não esperar o timeout de novo. Com sucesso, a
-    // mancha remonta o índice a partir do cache (guardar um índice por candidato pesaria na memória).
     const failedBuildings = new Map<number, BuildingsAround>();
 
     for (const candidate of candidates) {
@@ -153,7 +149,6 @@ export class RecommendationService {
           if (atError) throw new Error(`Erro ao criar atendimento do cenário: ${atError.message}.`);
         }
 
-        // Mancha de cobertura do gateway (método radial, com as edificações).
         const gatewayCoverage = await this.propagationService.buildCoverage(
           Number(gw.candidato.latitude),
           Number(gw.candidato.longitude),

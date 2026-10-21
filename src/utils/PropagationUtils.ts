@@ -128,13 +128,11 @@ export class PropagationUtils {
         return Math.max(0, range);
     }
 
-    /** Perda por difração em gume de faca (ITU-R P.526). */
     KnifeEdgeLossDb(v: number): number {
         if (v <= -0.78) return 0;
         return 6.9 + 20 * Math.log10(Math.sqrt((v - 0.1) ** 2 + 1) + v - 0.1);
     }
 
-    /** Difração sobre vários obstáculos pelo método de Deygout (obstáculo principal + um de cada lado). */
     DiffractionLossDb(edges: Edge[], start: Edge, end: Edge, wavelengthM: number, depth = 0): number {
         let best: { v: number; edge: Edge } | null = null;
 

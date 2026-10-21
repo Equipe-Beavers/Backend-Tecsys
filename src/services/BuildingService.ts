@@ -35,7 +35,6 @@ interface CacheEntry {
 export interface BuildingsAround {
     index: BuildingIndex | null;
     radiusM: number;
-    /** Motivo de as edificações não entrarem no cálculo, quando for o caso. */
     error: string | null;
 }
 
@@ -48,8 +47,6 @@ export class BuildingService {
     private propagationUtils = new PropagationUtils();
     private buildingUtils = new BuildingUtils();
     private geometryUtils = new GeometryUtils();
-
-    /** Limpa o cache em memória (usado nos testes). */
     static clearCache(): void {
         BuildingService.cache.clear();
         BuildingService.cachedCount = 0;
@@ -184,8 +181,6 @@ export class BuildingService {
     listBuildingMaterials(): BuildingMaterial[] {
         return BUILDING_MATERIALS;
     }
-
-    /** Índice das edificações num raio em volta de um ponto. */
     async loadIndexAround(latitude: number, longitude: number, radiusM: number): Promise<BuildingIndex> {
         const area = this.buildingUtils.AroundPoint(latitude, longitude, radiusM);
         const { buildings } = await this.getBuildingsInArea(area);
