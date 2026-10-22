@@ -6,6 +6,7 @@ export interface PerfilRf {
     frequencia_mhz: number;
     potencia_transmissao_dbm: number;
     sensibilidade_recepcao_dbm: number;
+    atenuacao_adicional_db?: number | null;
     alcance_estimado_m: number | null;
     altura_gateway_m: number | null;
     altura_dispositivo_m: number | null;
@@ -67,6 +68,13 @@ export interface CreateRFProfileInput {
     considera_vegetacao?: boolean;
     considera_edificacoes?: boolean;
     considera_antenas?: boolean;
+}
+
+export interface RFRangeCalculationInput {
+    frequencia_mhz: number;
+    potencia_transmissao_dbm: number;
+    sensibilidade_recepcao_dbm: number;
+    atenuacao_adicional_db: number;
 }
 
 export type UpdateRFProfileInput = Partial<Omit<CreateRFProfileInput, "id_usuario">>;
