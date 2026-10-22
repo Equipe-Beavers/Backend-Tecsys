@@ -356,13 +356,32 @@ export class App {
       altura_gateway_m: { type: ["number", "null"], minimum: 0 },
       altura_dispositivo_m: { type: ["number", "null"], minimum: 0 },
       capacidade_max_equipamentos: { type: ["integer", "null"] },
-      atenuacao_adicional_db: { type: ["number", "null"] },
+      atenuacao_adicional_db: { type: ["number", "null"], minimum: 0 },
       considera_relevo: { type: "boolean" },
       considera_vegetacao: { type: "boolean" },
       considera_edificacoes: { type: "boolean" },
       considera_antenas: { type: "boolean" },
     };
     const rfProfileProperties = { id_usuario: criterionId, ...rfProfileFields };
+    this.app.post("/calculate-rf-range", {
+      schema: { body: {
+        type: "object",
+        required: ["frequencia_mhz", "potencia_transmissao_dbm", "sensibilidade_recepcao_dbm", "atenuacao_adicional_db"],
+        additionalProperties: false,
+        properties: {
+          frequencia_mhz: { type: "number", exclusiveMinimum: 0 },
+          potencia_transmissao_dbm: { type: "number" },
+          sensibilidade_recepcao_dbm: { type: "number", maximum: 0 },
+          atenuacao_adicional_db: { type: "number", minimum: 0 },
+        },
+      } },
+    }, async (request, reply) => {
+      return rfControler.CalculateRange(
+        request as Parameters<RFController["CalculateRange"]>[0],
+        reply,
+      );
+    });
+
     this.app.get("/get-rf-profile/:id", {
       schema: { params: criterionParams },
     }, async (request, reply) => {

@@ -10,29 +10,41 @@ export function distanciaMetros(lat1: number, lon1: number, lat2: number, lon2: 
 }
 
 
+export const MARGEM_PLANEJAMENTO_DB = 20;
+
 function perdaPercursoDb(distanciaKm: number, freqMhz: number): number {
   if (distanciaKm <= 0) return 0;
   return 20 * Math.log10(distanciaKm) + 20 * Math.log10(freqMhz) + 32.44;
 }
 
-export function nivelSinalDbm(distanciaM: number, freqMhz: number, potenciaDbm: number): number {
+export function nivelSinalDbm(
+  distanciaM: number,
+  freqMhz: number,
+  potenciaDbm: number,
+  atenuacaoAdicionalDb = 0,
+): number {
   const distanciaKm = distanciaM / 1000;
-  return potenciaDbm - perdaPercursoDb(distanciaKm, freqMhz);
+  return potenciaDbm - perdaPercursoDb(distanciaKm, freqMhz) - atenuacaoAdicionalDb;
 }
 
 
 export function alcanceMaximoM(perfil: {
-  alcance_estimado_m: number | null;
+  alcance_estimado_m?: number | null;
   frequencia_mhz: number;
   potencia_transmissao_dbm: number;
   sensibilidade_recepcao_dbm: number;
+  atenuacao_adicional_db?: number | null;
 }): number {
   if (perfil.alcance_estimado_m != null) return perfil.alcance_estimado_m;
 
-  const margemDb = perfil.potencia_transmissao_dbm - perfil.sensibilidade_recepcao_dbm;
+  const perdaDisponivelDb =
+    perfil.potencia_transmissao_dbm -
+    perfil.sensibilidade_recepcao_dbm -
+    (perfil.atenuacao_adicional_db ?? 0) -
+    MARGEM_PLANEJAMENTO_DB;
   const distanciaKm = Math.pow(
     10,
-    (margemDb - 20 * Math.log10(perfil.frequencia_mhz) - 32.44) / 20
+    (perdaDisponivelDb - 20 * Math.log10(perfil.frequencia_mhz) - 32.44) / 20
   );
   return Math.max(0, distanciaKm * 1000);
 }

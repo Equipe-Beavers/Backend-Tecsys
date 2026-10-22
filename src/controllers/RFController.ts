@@ -1,12 +1,23 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { RFService } from "../services/RFService.js";
-import type { CreateRFProfileInput, CriarPerfilRf, RFProfileListQuery, UpdateRFProfileInput } from "../interface/perfil-rf.js";
+import type { CreateRFProfileInput, CriarPerfilRf, RFProfileListQuery, RFRangeCalculationInput, UpdateRFProfileInput } from "../interface/perfil-rf.js";
+import { alcanceMaximoM, MARGEM_PLANEJAMENTO_DB } from "../services/recomendacao/propagacao.js";
 
 export class RFController {
     private rfService: RFService;
 
     constructor() {
         this.rfService = new RFService();
+    }
+
+    async CalculateRange(request: FastifyRequest<{ Body: RFRangeCalculationInput }>, reply: FastifyReply) {
+        const alcance_estimado_m = alcanceMaximoM({
+            ...request.body,
+            alcance_estimado_m: null,
+        });
+        return reply.status(200).send({
+            data: { alcance_estimado_m, margem_planejamento_db: MARGEM_PLANEJAMENTO_DB },
+        });
     }
 
     async ListRFProfiles(request: FastifyRequest<{ Querystring: RFProfileListQuery }>, reply: FastifyReply) {

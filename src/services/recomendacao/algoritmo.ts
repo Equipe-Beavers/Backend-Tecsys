@@ -74,7 +74,12 @@ export function calcularRecomendacao(
         return {
           ponto: p,
           distanciaM,
-          nivelSinalDbm: nivelSinalDbm(distanciaM, perfil.frequencia_mhz, perfil.potencia_transmissao_dbm),
+          nivelSinalDbm: nivelSinalDbm(
+            distanciaM,
+            perfil.frequencia_mhz,
+            perfil.potencia_transmissao_dbm,
+            perfil.atenuacao_adicional_db ?? 0,
+          ),
         };
       }),
     });
