@@ -26,7 +26,9 @@ export class StudyService {
       studyData.distribuidora?.trim() || null,
       studyData.versao_bdgd?.trim() || null,
       studyData.nome_base_externa?.trim() || null,
-      studyData.tipos_ativo_selecionados ? JSON.stringify(studyData.tipos_ativo_selecionados) : null,
+      studyData.tipos_ativo_selecionados
+        ? JSON.stringify(studyData.tipos_ativo_selecionados)
+        : null,
       studyData.status ?? "AGUARDANDO_SELECAO",
     ];
 
@@ -72,22 +74,40 @@ export class StudyService {
       studyData.prioridade ?? null,
       studyData.latitude,
       studyData.longitude,
+      studyData.relevo_m ?? null,
       studyData.atributos ?? null,
       JSON.stringify(geom),
     ];
 
     const query = `
-      INSERT INTO estudo_pontos 
-      (id_estudo, origem, id_ativo_bdgd, tipo_ativo, rotulo, papel, prioridade, latitude, longitude, atributos, geom)
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
-        ST_GeomFromGeoJSON($11)
-      ) RETURNING *;
-    `;
-    
+    INSERT INTO estudo_pontos
+      (
+        id_estudo,
+        origem,
+        id_ativo_bdgd,
+        tipo_ativo,
+        rotulo,
+        papel,
+        prioridade,
+        latitude,
+        longitude,
+        relevo_m,
+        atributos,
+        geom
+      )
+    VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+      ST_GeomFromGeoJSON($12)
+    )
+    RETURNING *;
+  `;
+
     const result = await pool.query(query, ponto);
 
-    if (!result.rows[0]) throw new Error("Não foi possível criar o ponto de estudo.");
+    if (!result.rows[0]) {
+      throw new Error("Não foi possível criar o ponto de estudo.");
+    }
+
     return result.rows[0] as EstudoPonto;
   }
 }
