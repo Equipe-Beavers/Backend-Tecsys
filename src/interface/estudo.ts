@@ -24,6 +24,8 @@ export interface TipoAtivoSelecionado {
 export interface Estudo {
     id_estudo: number;
     id_usuario: number;
+    id_perfil_rf: number;
+    id_criterio_instalacao: number;
 
     tipo_delimitacao: TipoDelimitacao;
 
@@ -50,6 +52,8 @@ export interface Estudo {
 
 export interface CriarEstudo {
     id_usuario: number;
+    id_perfil_rf: number;
+    id_criterio_instalacao: number;
 
     tipo_delimitacao: TipoDelimitacao;
 
@@ -70,3 +74,8 @@ export interface CriarEstudo {
 
     status?: StatusEstudo;
 }
+
+export type UpdateStudyDTO = Partial<Pick<CriarEstudo,
+    "nome" | "descricao" | "uf" | "municipio" | "bairro" |
+    "id_perfil_rf" | "id_criterio_instalacao"
+>>;

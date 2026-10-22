@@ -1,6 +1,9 @@
 import { supabase } from "../database/supabase.js";
+import { pool } from "../database/pool.js";
+import { createStudyQuery, listStudiesQuery, getStudyQuery, updateStudyQuery, deleteStudyQuery } from "../database/queries.js";
 import type { CriarEstudoPonto, EstudoPonto } from "../interface/estudo-ponto.js";
-import type { CriarEstudo, Estudo } from "../interface/estudo.js";
+import type { CriarEstudo, Estudo, UpdateStudyDTO } from "../interface/estudo.js";
+import { StudyError } from "../utils/StudyError.js";
 import { ValidationService } from "./ValidationService.js";
 
 export class StudyService {
@@ -13,6 +16,8 @@ export class StudyService {
     async createStudy(studyData: CriarEstudo) {
         const estudo = {
         id_usuario: studyData.id_usuario,
+        id_perfil_rf: studyData.id_perfil_rf,
+        id_criterio_instalacao: studyData.id_criterio_instalacao,
         tipo_delimitacao: studyData.tipo_delimitacao,
         uf: studyData.uf ?? null,
         municipio: studyData.municipio ?? null,
@@ -27,11 +32,56 @@ export class StudyService {
         status: studyData.status ?? "AGUARDANDO_SELECAO",
         };
 
-        const { data, error } = await supabase.from("estudos")
-        .insert(estudo).select().single();
+        const { rows } = await pool.query(createStudyQuery, [JSON.stringify(estudo)]);
+        if (!rows[0]) {
+            throw new Error("Selecione um perfil RF e um critério de instalação pertencentes ao usuário do estudo.");
+        }
+        return this.mapStudy(rows[0]);
+    }
 
-        if (error) throw new Error(`Erro ao criar estudo: ${error.message}.`);
-        return data as Estudo;
+    async listStudies(userId?: number): Promise<Estudo[]> {
+        const { rows } = await pool.query(listStudiesQuery, [userId ?? null]);
+        return rows.map((row) => this.mapStudy(row));
+    }
+
+    async getStudy(id: number): Promise<Estudo> {
+        const { rows } = await pool.query(getStudyQuery, [id]);
+        if (!rows[0]) throw new StudyError(404, "Estudo não encontrado.");
+        return this.mapStudy(rows[0]);
+    }
+
+    async updateStudy(id: number, input: UpdateStudyDTO): Promise<Estudo> {
+        const values = { ...input };
+        if (values.nome !== undefined) values.nome = values.nome.trim();
+        if (values.descricao !== undefined) values.descricao = values.descricao?.trim() || null;
+        const { rows } = await pool.query(updateStudyQuery, [id, JSON.stringify(values)]);
+        if (!rows[0]) {
+            await this.getStudy(id);
+            throw new StudyError(400, "Selecione um perfil RF e um critério de instalação pertencentes ao usuário do estudo.");
+        }
+        return this.mapStudy(rows[0]);
+    }
+
+    async deleteStudy(id: number): Promise<void> {
+        try {
+            const { rows } = await pool.query(deleteStudyQuery, [id]);
+            if (!rows[0]) throw new StudyError(404, "Estudo não encontrado.");
+        } catch (error) {
+            if (typeof error === "object" && error !== null && "code" in error && error.code === "23503") {
+                throw new StudyError(409, "Não é possível excluir um estudo vinculado a outros registros.");
+            }
+            throw error;
+        }
+    }
+
+    private mapStudy(row: Record<string, unknown>): Estudo {
+        return {
+            ...row,
+            id_estudo: Number(row.id_estudo),
+            id_usuario: Number(row.id_usuario),
+            id_perfil_rf: Number(row.id_perfil_rf),
+            id_criterio_instalacao: Number(row.id_criterio_instalacao),
+        } as Estudo;
     }
 
     async createStudyPoint(studyData: CriarEstudoPonto): Promise<EstudoPonto> {
