@@ -33,3 +33,6 @@ coverage/
 .env.*
 !.env.example
 tecsys_backup.dump
+
+# Relatórios locais do Vitest
+*-report.json

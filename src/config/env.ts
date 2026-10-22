@@ -1,5 +1,13 @@
 import "dotenv/config";
 
+function required(name: string): string {
+    const value = process.env[name];
+    if (!value || value.startsWith("<")) {
+        throw new Error(`Variável de ambiente obrigatória ausente ou inválida: ${name}`);
+    }
+    return value;
+}
+
 function optional(name: string, fallback: string): string {
     const value = process.env[name];
     if (!value || value.startsWith("<")) {
@@ -10,9 +18,9 @@ function optional(name: string, fallback: string): string {
 
 export const env = {
     database: {
-        name: optional("DB_NAME", "postgres"),
-        user: optional("DB_USER", "postgres"),
-        password: optional("DB_PASSWORD", "postgres"),
+        name: required("DB_NAME"),
+        user: required("DB_USER"),
+        password: required("DB_PASSWORD"),
         host: optional("DB_HOST", "localhost"),
         port: Number(optional("DB_PORT", "5432")),
         ssl: process.env.DB_SSL?.toLowerCase() === "true",
