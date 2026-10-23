@@ -124,7 +124,7 @@ export class RecommendationService {
         custo_total_estimado: totalCost,
         executado_em: new Date().toISOString(),
       }).select().single();
-      
+
       if (scError) throw new Error(`Erro ao criar cenário: ${scError.message}`);
 
       const coverageByGateway = new Map<number, Coverage>();
@@ -180,7 +180,7 @@ export class RecommendationService {
         ([tipo, total]) => ({tipo_ativo: tipo, total, nao_cobertos: notCoveredByType.get(tipo) ?? 0}),
       ).sort((a, b) => b.total - a.total);
 
-      return { 
+      return {
         id_cenario: scenario.id_cenario,
         quantidade_gateways: result.gateways.length,
         percentual_cobertura: scenario.percentual_cobertura,

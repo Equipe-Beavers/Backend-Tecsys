@@ -8,6 +8,10 @@ import { ScenarioController } from "./controllers/ScenarioController.js";
 import { InstallCriterionController } from "./controllers/InstallCriterionController.js";
 import { RFController } from "./controllers/RFController.js";
 import { RecommendationController } from "./controllers/RecommendationController.js";
+import { ActiveController } from "./controllers/ActiveController.js";
+import { RegionsController } from "./controllers/RegionsController.js";
+import { ativoRoutes } from "./modules/ativo.routes.js";
+import { regioesRoutes } from "./modules/regioes.routes.js";
 
 export class App {
   public app: fastify.FastifyInstance;
@@ -19,6 +23,8 @@ export class App {
         ?? /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     });
+    void this.app.register(regioesRoutes, { prefix: "/api" });
+    void this.app.register(ativoRoutes);
     this.routes();
   }
 
@@ -45,6 +51,8 @@ export class App {
     const recommendationController = new RecommendationController();
     const buildingController = new BuildingController();
     const propagationController = new PropagationController();
+    const activeController = new ActiveController();
+    const regionsController = new RegionsController();
 
     this.app.post("/create-user", async (request, reply) => {
       await userController.CreateUser(
@@ -128,6 +136,24 @@ export class App {
     });
     this.app.delete("/estudos/:id", { schema: { params: studyParams } }, async (request, reply) => {
       return studyController.DeleteStudy(request as Parameters<StudyController["DeleteStudy"]>[0], reply);
+    });
+
+    // Compatibilidade com o fluxo da SCRUM-54 enquanto os clientes migram
+    // para as rotas REST em /estudos.
+    this.app.get("/study", async (request, reply) => {
+      return studyController.ListStudies(
+        request as Parameters<StudyController["ListStudies"]>[0], reply,
+      );
+    });
+    this.app.patch("/study/:id", async (request, reply) => {
+      return studyController.UpdateStudy(
+        request as Parameters<StudyController["UpdateStudy"]>[0], reply,
+      );
+    });
+    this.app.delete("/study/:id", async (request, reply) => {
+      return studyController.DeleteStudy(
+        request as Parameters<StudyController["DeleteStudy"]>[0], reply,
+      );
     });
 
     this.app.post("/study/:id/points", async (request, reply) => {
@@ -438,6 +464,45 @@ export class App {
       );
     });
 
+    // Rotas sem prefixo mantidas para o frontend da SCRUM-54. As rotas
+    // equivalentes em /api continuam registradas acima para a develop.
+    this.app.get("/distribuidoras", async (request, reply) => {
+      return regionsController.ListDistributor(
+        request as Parameters<RegionsController["ListDistributor"]>[0], reply,
+      );
+    });
+    this.app.get("/estados", async (request, reply) => {
+      return regionsController.ListStates(
+        request as Parameters<RegionsController["ListStates"]>[0], reply,
+      );
+    });
+    this.app.get("/municipios", async (request, reply) => {
+      return regionsController.ListMunicipios(
+        request as Parameters<RegionsController["ListMunicipios"]>[0], reply,
+      );
+    });
+    this.app.get("/bairros", async (request, reply) => {
+      return regionsController.ListNeighborhood(
+        request as Parameters<RegionsController["ListNeighborhood"]>[0], reply,
+      );
+    });
+    this.app.get("/ativos/distribuidoras", async (request, reply) => {
+      return activeController.FindDistributors(request, reply);
+    });
+    this.app.get("/ativos/tipos-dispositivos", async (request, reply) => {
+      return activeController.FindDeviceTypes(request, reply);
+    });
+    this.app.get("/ativos", async (request, reply) => {
+      return activeController.FindAssets(
+        request as Parameters<ActiveController["FindAssets"]>[0], reply,
+      );
+    });
+    this.app.get("/ativos/:id", async (request, reply) => {
+      return activeController.FindAssetById(
+        request as Parameters<ActiveController["FindAssetById"]>[0], reply,
+      );
+    });
+
     const validateNoUnexpectedProperties = (body: Record<string, unknown>, allowed: string[], reply: any) => {
       const extras = Object.keys(body).filter((key) => !allowed.includes(key));
       if (extras.length > 0) {
@@ -485,6 +550,7 @@ export class App {
             papel: { type: "string", enum: ["candidato", "interesse", "ambos"] },
             latitude: { type: "number", minimum: -90, maximum: 90 },
             longitude: { type: "number", minimum: -180, maximum: 180 },
+            relevo_m: { type: ["number", "null"] },
             tipo_ativo: { type: ["string", "null"] },
             rotulo: { type: ["string", "null"] },
           },

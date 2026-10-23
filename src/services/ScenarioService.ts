@@ -1,4 +1,4 @@
-import { supabase } from "../database/supabase.js";
+import { pool } from "../database/pool.js";
 import type {
   CenarioAtendimento,
   CriarCenarioAtendimento,
@@ -48,31 +48,40 @@ export class ScenarioService {
       );
     }
 
-    const cenario = {
-      id_estudo: scenarioData.id_estudo,
-      id_perfil_rf: scenarioData.id_perfil_rf,
-      id_criterio_instalacao: scenarioData.id_criterio_instalacao ?? null,
-      id_cenario_base: scenarioData.id_cenario_base ?? null,
-      nome: scenarioData.nome.trim(),
-      descricao: scenarioData.descricao?.trim() || null,
-      objetivo: scenarioData.objetivo?.trim() || null,
-      status: scenarioData.status,
-      quantidade_gateways: scenarioData.quantidade_gateways ?? null,
-      pontos_interesse: scenarioData.pontos_interesse ?? null,
-      pontos_cobertos: scenarioData.pontos_cobertos ?? null,
-      pontos_nao_cobertos: scenarioData.pontos_nao_cobertos ?? null,
-      percentual_cobertura: scenarioData.percentual_cobertura ?? null,
-      capacidade_utilizada_media_pct: scenarioData.capacidade_utilizada_media_pct ?? null,
-      custo_total_estimado: scenarioData.custo_total_estimado ?? null,
-      mancha_consolidada: scenarioData.mancha_consolidada ?? null,
-      executado_em: scenarioData.executado_em ?? null,
-    };
+    const cenario = [
+      scenarioData.id_estudo,
+      scenarioData.id_perfil_rf,
+      scenarioData.id_criterio_instalacao ?? null,
+      scenarioData.id_cenario_base ?? null,
+      scenarioData.nome.trim(),
+      scenarioData.descricao?.trim() || null,
+      scenarioData.objetivo?.trim() || null,
+      scenarioData.status,
+      scenarioData.quantidade_gateways ?? null,
+      scenarioData.pontos_interesse ?? null,
+      scenarioData.pontos_cobertos ?? null,
+      scenarioData.pontos_nao_cobertos ?? null,
+      scenarioData.percentual_cobertura ?? null,
+      scenarioData.capacidade_utilizada_media_pct ?? null,
+      scenarioData.custo_total_estimado ?? null,
+      scenarioData.mancha_consolidada ? JSON.stringify(scenarioData.mancha_consolidada) : null,
+      scenarioData.executado_em ?? null,
+    ];
 
-    const { data, error } = await supabase.from("cenarios")
-    .insert(cenario).select().single();
+    const query = `
+      INSERT INTO cenarios 
+      (id_estudo, id_perfil_rf, id_criterio_instalacao, id_cenario_base, nome, descricao, objetivo, status, quantidade_gateways, pontos_interesse, pontos_cobertos, pontos_nao_cobertos, percentual_cobertura, capacidade_utilizada_media_pct, custo_total_estimado, mancha_consolidada, executado_em)
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+        CASE WHEN $16::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($16) END,
+        $17
+      ) RETURNING *;
+    `;
 
-    if (error) throw new Error(`Erro ao criar cenário: ${error.message}.`);
-    return data as Cenario;
+    const result = await pool.query(query, cenario);
+
+    if (!result.rows[0]) throw new Error("Erro ao criar cenário.");
+    return result.rows[0] as Cenario;
   }
 
   async createServiceScenario(
@@ -91,24 +100,23 @@ export class ScenarioService {
       "Ponto do estudo",
     );
 
-    const atendimento = {
-      id_cenario_gateway: scenarioData.id_cenario_gateway,
-      id_estudo_ponto: scenarioData.id_estudo_ponto,
-      distancia_m: scenarioData.distancia_m ?? null,
-      nivel_sinal_estimado_dbm: scenarioData.nivel_sinal_estimado_dbm ?? null,
-    };
+    const atendimento = [
+      scenarioData.id_cenario_gateway,
+      scenarioData.id_estudo_ponto,
+      scenarioData.distancia_m ?? null,
+      scenarioData.nivel_sinal_estimado_dbm ?? null,
+    ];
 
-    const { data, error } = await supabase
-      .from("cenario_atendimentos")
-      .insert(atendimento)
-      .select()
-      .single();
+    const query = `
+      INSERT INTO cenario_atendimentos 
+      (id_cenario_gateway, id_estudo_ponto, distancia_m, nivel_sinal_estimado_dbm)
+      VALUES ($1, $2, $3, $4) RETURNING *;
+    `;
 
-    if (error)
-      throw new Error(
-        `Erro ao criar atendimento do cenário: ${error.message}.`,
-      );
-    return data as CenarioAtendimento;
+    const result = await pool.query(query, atendimento);
+
+    if (!result.rows[0]) throw new Error("Erro ao criar atendimento do cenário.");
+    return result.rows[0] as CenarioAtendimento;
   }
 
   async createGatewayScenario(
@@ -127,26 +135,29 @@ export class ScenarioService {
       "Ponto do estudo",
     );
 
-    const gateway = {
-      id_cenario: scenarioData.id_cenario,
-      id_estudo_ponto: scenarioData.id_estudo_ponto,
-      ordem: scenarioData.ordem ?? null,
-      quantidade_pontos_atendidos:
-        scenarioData.quantidade_pontos_atendidos ?? null,
-      capacidade_utilizada_pct: scenarioData.capacidade_utilizada_pct ?? null,
-      custo_estimado: scenarioData.custo_estimado ?? null,
-      parametros_calculo: scenarioData.parametros_calculo ?? null,
-      mancha_cobertura: scenarioData.mancha_cobertura ?? null,
-    };
+    const gateway = [
+      scenarioData.id_cenario,
+      scenarioData.id_estudo_ponto,
+      scenarioData.ordem ?? null,
+      scenarioData.quantidade_pontos_atendidos ?? null,
+      scenarioData.capacidade_utilizada_pct ?? null,
+      scenarioData.custo_estimado ?? null,
+      scenarioData.parametros_calculo ?? null,
+      scenarioData.mancha_cobertura ? JSON.stringify(scenarioData.mancha_cobertura) : null,
+    ];
 
-    const { data, error } = await supabase
-      .from("cenario_gateways")
-      .insert(gateway)
-      .select()
-      .single();
+    const query = `
+      INSERT INTO cenario_gateways 
+      (id_cenario, id_estudo_ponto, ordem, quantidade_pontos_atendidos, capacidade_utilizada_pct, custo_estimado, parametros_calculo, mancha_cobertura)
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        CASE WHEN $8::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($8) END
+      ) RETURNING *;
+    `;
 
-    if (error)
-      throw new Error(`Erro ao criar gateway do cenário: ${error.message}`);
-    return data as CenarioGateway;
+    const result = await pool.query(query, gateway);
+
+    if (!result.rows[0]) throw new Error("Erro ao criar gateway do cenário.");
+    return result.rows[0] as CenarioGateway;
   }
 }

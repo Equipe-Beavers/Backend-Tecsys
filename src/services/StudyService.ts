@@ -110,6 +110,7 @@ export class StudyService {
             prioridade: studyData.prioridade ?? null,
             latitude: studyData.latitude,
             longitude: studyData.longitude,
+            relevo_m: studyData.relevo_m ?? null,
             atributos: studyData.atributos ?? null,
             geom
         }

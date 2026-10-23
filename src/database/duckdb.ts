@@ -19,7 +19,6 @@ async function connect(): Promise<DuckDBConnection> {
     try {
         await duckdb.run("SET enable_geoparquet_conversion=false;");
     } catch {
-      
     }
     return duckdb;
 }

@@ -195,6 +195,7 @@ CREATE TABLE estudo_pontos (
   prioridade VARCHAR(20),
   latitude DECIMAL(10,7) NOT NULL,
   longitude DECIMAL(10,7) NOT NULL,
+  relevo_m DECIMAL(10,2),
   atributos JSONB,
   geom GEOMETRY(Point, 4674),
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
