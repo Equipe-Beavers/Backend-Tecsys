@@ -1,11 +1,5 @@
 import type { FastifyInstance } from "fastify";
-
-import {
-    atualizarRegistro,
-    buscarRegistroPorId,
-    excluirRegistro,
-    listarRegistros
-} from "../services/crud.service.js";
+import { ApplicationService } from "../services/ApplicationService.js";
 
 interface ConfiguracaoCrud {
     caminho: string;
@@ -35,6 +29,9 @@ const schemaAtualizacao = {
     }
 };
 
+
+const applicationService = new ApplicationService();
+
 function tratarErro(fastify: FastifyInstance, error: unknown) {
     const mensagem = error instanceof Error
         ? error.message
@@ -58,7 +55,7 @@ export function registrarRotasCrud<T>(
 
     fastify.get(caminho, async (_request, reply) => {
         try {
-            const registros = await listarRegistros<T>(tabela);
+            const registros = await applicationService.listRegisters<T>(tabela);
             return reply.send({ [chaveResposta]: registros });
         } catch (error) {
             return reply.status(400).send(tratarErro(fastify, error));
@@ -70,7 +67,7 @@ export function registrarRotasCrud<T>(
         { schema: schemaId },
         async (request, reply) => {
             try {
-                const registro = await buscarRegistroPorId<T>(
+                const registro = await applicationService.findRegisterById<T>(
                     tabela,
                     colunaId,
                     request.params.id,
@@ -92,7 +89,7 @@ export function registrarRotasCrud<T>(
         { schema: schemaAtualizacao },
         async (request, reply) => {
             try {
-                const registro = await atualizarRegistro<T>(
+                const registro = await applicationService.updateRegister<T>(
                     tabela,
                     colunaId,
                     request.params.id,
@@ -115,7 +112,7 @@ export function registrarRotasCrud<T>(
         { schema: schemaId },
         async (request, reply) => {
             try {
-                await excluirRegistro(
+                await applicationService.deleteRegister(
                     tabela,
                     colunaId,
                     request.params.id,

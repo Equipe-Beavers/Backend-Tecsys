@@ -1,5 +1,5 @@
-import type { EstudoPonto } from "../../models/estudo-ponto.js";
-import type { PerfilRf } from "../../models/perfil-rf.js";
+import type { EstudoPonto } from "../../interface/estudo-ponto.js";
+import type { PerfilRf } from "../../interface/perfil-rf.js";
 import { distanciaMetros, nivelSinalDbm, alcanceMaximoM } from "./propagacao.js";
 
 export interface AtendimentoCalculado {
