@@ -1,51 +1,81 @@
 import { pool } from "../database/pool.js";
-import type {
-  CriterioInstalacao,
-  CriarCriterioInstalacao,
-} from "../interface/criterio-instalacao.js";
-import { ValidationService } from "./ValidationService.js";
+import {
+  createInstallCriterionQuery, listInstallCriteriaQuery, getInstallCriterionQuery,
+  updateInstallCriterionQuery, deleteInstallCriterionQuery, lockInstallCriterionQuery,
+  beginCriterionTransactionQuery, commitCriterionTransactionQuery, rollbackCriterionTransactionQuery,
+} from "../database/queries.js";
+import type { CreateInstallCriterionDTO, InstallCriterionDTO, ListInstallCriteriaDTO } from "../interface/InstallCriterionDTO.js";
+import { InstallCriterionError } from "../utils/InstallCriterionError.js";
+import { InstallCriterionUtils } from "../utils/InstallCriterionUtils.js";
+
+import { InstallCriterionValidation } from "../utils/InstallCriterionValidation.js";
 
 export class InstallCriterionService {
-  private validationService: ValidationService;
+  private readonly validation = new InstallCriterionValidation();
+  private readonly utils = new InstallCriterionUtils();
 
-  constructor() {
-    this.validationService = new ValidationService();
+  async createInstallCriterion(input: CreateInstallCriterionDTO): Promise<InstallCriterionDTO> {
+    try {
+      this.validation.Validate(input);
+      const { rows } = await pool.query(createInstallCriterionQuery, [this.utils.PrepareData(input)]);
+      return this.utils.MapRow(rows[0]);
+    } catch (error) {
+      return this.utils.RethrowDatabaseError(error);
+    }
   }
 
-  async createInstallCriterion(installData: CriarCriterioInstalacao): Promise<CriterioInstalacao> {
-    await this.validationService.verifyRecord(
-      "usuarios",
-      "id_usuario",
-      installData.id_usuario,
-      "Usuário",
-    );
+  async listInstallCriteria(input: ListInstallCriteriaDTO) {
+    const page = input.page ?? 1;
+    const limit = input.limit ?? 50;
+    const { rows } = await pool.query(listInstallCriteriaQuery, [input.id_usuario ?? null, limit, (page - 1) * limit]);
+    return { data: rows.map((row) => this.utils.MapRow(row)), page, limit };
+  }
 
-    const criterio = [
-      installData.id_usuario,
-      installData.nome.trim(),
-      installData.descricao?.trim() || null,
-      installData.tipos_elementos_permitidos ?? null,
-      installData.tipos_elementos_proibidos ?? null,
-      installData.requer_alimentacao_eletrica ?? null,
-      installData.altura_minima_m ?? null,
-      installData.distancia_maxima_ativos_m ?? null,
-      installData.caracteristicas_minimas_local ?? null,
-      installData.locais_autorizados ?? null,
-      installData.locais_obrigatorios ?? null,
-      installData.locais_proibidos ?? null,
-      installData.limite_gateways ?? null,
-      installData.custo_maximo ?? null,
-    ];
+  async getInstallCriterion(id: number): Promise<InstallCriterionDTO> {
+    const { rows } = await pool.query(getInstallCriterionQuery, [id]);
+    if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+    return this.utils.MapRow(rows[0]);
+  }
 
-    const query = `
-      INSERT INTO criterios_instalacao 
-      (id_usuario, nome, descricao, tipos_elementos_permitidos, tipos_elementos_proibidos, requer_alimentacao_eletrica, altura_minima_m, distancia_maxima_ativos_m, caracteristicas_minimas_local, locais_autorizados, locais_obrigatorios, locais_proibidos, limite_gateways, custo_maximo)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *;
-    `;
+  async updateInstallCriterion(id: number, input: Partial<CreateInstallCriterionDTO>): Promise<InstallCriterionDTO> {
+    try {
+      this.validation.Validate(input);
+      if (Object.hasOwn(input, "tipos_elementos_permitidos") || Object.hasOwn(input, "tipos_elementos_proibidos")) {
+        return await this.updateAssetSelections(id, input);
+      }
+      const { rows } = await pool.query(updateInstallCriterionQuery, [id, this.utils.PrepareData(input)]);
+      if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+      return this.utils.MapRow(rows[0]);
+    } catch (error) {
+      return this.utils.RethrowDatabaseError(error);
+    }
+  }
 
-    const result = await pool.query(query, criterio);
+  private async updateAssetSelections(id: number, input: Partial<CreateInstallCriterionDTO>): Promise<InstallCriterionDTO> {
+    const client = await pool.connect();
+    try {
+      await client.query(beginCriterionTransactionQuery);
+      const existing = await client.query(lockInstallCriterionQuery, [id]);
+      if (!existing.rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+      this.validation.Validate({ ...existing.rows[0], ...input });
+      const { rows } = await client.query(updateInstallCriterionQuery, [id, this.utils.PrepareData(input)]);
+      const result = this.utils.MapRow(rows[0]);
+      await client.query(commitCriterionTransactionQuery);
+      return result;
+    } catch (error) {
+      await client.query(rollbackCriterionTransactionQuery);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 
-    if (!result.rows[0]) throw new Error("Erro ao criar critério de instalação.");
-    return result.rows[0] as CriterioInstalacao;
+  async deleteInstallCriterion(id: number): Promise<void> {
+    try {
+      const { rows } = await pool.query(deleteInstallCriterionQuery, [id]);
+      if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
+    } catch (error) {
+      this.utils.RethrowDatabaseError(error, true);
+    }
   }
 }

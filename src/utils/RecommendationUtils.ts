@@ -35,6 +35,7 @@ export interface ResultadoCalculo {
 
 const WEIGHT_PRIORIRY: Record<string, number> = {critico: 3, alta: 2, normal: 1};
 
+
 export class RecommendationUtils {
   MetersDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371000;
@@ -73,53 +74,45 @@ export class RecommendationUtils {
     return Math.max(0, KMDistance * 1000);
   }
 
-  CalculateRecommendation(candidates: EstudoPonto[], interestPoint: EstudoPonto[], RFProfile: PerfilRf,): ResultadoCalculo {
-    const range = this.MMaxRange(RFProfile);
-    const capability = RFProfile.capacidade_max_equipamentos ??  Infinity;
-
+  /**
+   * Escolhe os gateways de forma gulosa: a cada rodada fica o candidato que cobre mais pontos
+   * ainda descobertos (com peso pela prioridade), respeitando a capacidade do gateway.
+   * `coverage` traz, para cada candidato, os pontos que ele cobre segundo o cálculo de
+   * propagação (PropagationService), já com distância e nível de sinal.
+   */
+  CalculateRecommendation(
+    candidates: EstudoPonto[],
+    interestPoint: EstudoPonto[],
+    RFProfile: PerfilRf,
+    coverage: Map<number, AtendimentoCalculado[]>,
+  ): ResultadoCalculo {
+    const capability = RFProfile.capacidade_max_equipamentos ?? Infinity;
     const pending = new Map(interestPoint.map((p) => [p.id_estudo_ponto, p]));
-    const rangePerCandidate = new Map<number, EstudoPonto[]>();
-    for (const c of candidates) {
-        const inside = interestPoint.filter((p) => this.MetersDistance(c.latitude, c.longitude, p.latitude, p.longitude) <= range); 
-        rangePerCandidate.set(c.id_estudo_ponto, inside);
-    }
 
     const gateways: GatewayCalculado[] = [];
     let rest = [...candidates];
 
     while (pending.size > 0 && rest.length > 0) {
-        let best: {candidate: EstudoPonto;  covered: EstudoPonto[]; score: number} | null = null;
+        let best: {candidate: EstudoPonto;  covered: AtendimentoCalculado[]; score: number} | null = null;
         for (const c of rest) {
-            const possibilities = (rangePerCandidate.get(c.id_estudo) ?? []).filter(
-                (p) => pending.has(p.id_estudo_ponto)
+            const possibilities = (coverage.get(c.id_estudo_ponto) ?? []).filter(
+                (a) => pending.has(a.ponto.id_estudo_ponto)
             );
             const ordinated = possibilities.sort(
-                (a, b) => (WEIGHT_PRIORIRY[b.prioridade ?? "normal"] ?? 1) - (WEIGHT_PRIORIRY[a.prioridade ?? "normal"] ?? 1)
+                (a, b) => (WEIGHT_PRIORIRY[b.ponto.prioridade ?? "normal"] ?? 1) - (WEIGHT_PRIORIRY[a.ponto.prioridade ?? "normal"] ?? 1)
             );
             const covered = capability === Infinity ? ordinated : ordinated.slice(0, capability);
-            const score = covered.reduce((s, p) => s + (WEIGHT_PRIORIRY[p.prioridade ?? "normal"] ?? 1), 0);
+            const score = covered.reduce((s, a) => s + (WEIGHT_PRIORIRY[a.ponto.prioridade ?? "normal"] ?? 1), 0);
             if (!best || score > best.score) best = {candidate: c, covered, score};
         }
 
         if (!best || best.covered.length === 0) break;
 
         const choosedCandidate = best.candidate;
-        best.covered.forEach((p) => pending.delete(p.id_estudo_ponto));
+        best.covered.forEach((a) => pending.delete(a.ponto.id_estudo_ponto));
         gateways.push({
             candidato: choosedCandidate,
-            atendimentos: best.covered.map((p) => {
-                const MDistance = this.MetersDistance(
-                    choosedCandidate.latitude,
-                    choosedCandidate.longitude,
-                    p.latitude,
-                    p.longitude
-                );
-                return {
-                    ponto: p,
-                    distanciaM: MDistance,
-                    nivelSinalDbm: this.DBMSinalLevel(MDistance, RFProfile.frequencia_mhz, RFProfile.potencia_transmissao_dbm),
-                };
-            }),
+            atendimentos: best.covered,
         });
         rest =  rest.filter((c) => c.id_estudo_ponto !== choosedCandidate.id_estudo_ponto);
     }

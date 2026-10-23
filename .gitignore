@@ -4,7 +4,6 @@ dist/
 build/
 
 .env
-.env.local
 .env.*.local
 !.env.example
 
@@ -30,4 +29,10 @@ Thumbs.db
 
 coverage/
 .nyc_output/
-global-bundle.pem
+# Remote credentials stay private; only templates may be committed.
+.env.*
+!.env.example
+tecsys_backup.dump
+
+# Relatórios locais do Vitest
+*-report.json
