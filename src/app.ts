@@ -1,4 +1,5 @@
 import fastify from "fastify";
+import cors from "@fastify/cors";
 import { UserController } from "./controllers/UserController.js";
 import { StudyController } from "./controllers/StudyController.js";
 import { ScenarioController } from "./controllers/ScenarioController.js";
@@ -12,6 +13,16 @@ class App {
   public app: fastify.FastifyInstance;
   constructor() {
     this.app = fastify({ logger: true });
+    const configuredOrigins = process.env.CORS_ORIGIN
+      ?.split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean) ?? [];
+    this.app.register(cors, {
+      origin: [
+        ...configuredOrigins,
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
+      ],
+    });
     this.routes();
   }
 
