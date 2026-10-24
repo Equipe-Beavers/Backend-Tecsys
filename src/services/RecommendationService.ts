@@ -1,7 +1,10 @@
 import { pool } from "../database/pool.js";
 import type { EstudoPonto } from "../interface/estudo-ponto.js";
 import type { PerfilRf } from "../interface/perfil-rf.js";
-import { RecommendationUtils } from "../utils/RecommendationUtils.js";
+import { RecommendationUtils, type AtendimentoCalculado } from "../utils/RecommendationUtils.js";
+import { PropagationService } from "./PropagationService.js";
+import type { BuildingsAround } from "./BuildingService.js";
+import type { Coverage } from "../interface/PropagationDTO.js";
 
 export interface GerarRecomendacaoInput {
   id_estudo: number;
@@ -12,9 +15,11 @@ export interface GerarRecomendacaoInput {
 
 export class RecommendationService {
   private recommendationUtils: RecommendationUtils;
+  private propagationService: PropagationService;
 
   constructor() {
     this.recommendationUtils = new RecommendationUtils();
+    this.propagationService = new PropagationService();
   }
 
   async generateRecommendation(input: GerarRecomendacaoInput) {
@@ -55,10 +60,67 @@ export class RecommendationService {
         "O estudo não possui nenhum ponto de interesse (papel interesse ou ambos).",
       );
 
+    const params = this.propagationService.buildParameters(rf as PerfilRf);
+    const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
+    const propagationPoints = interestPoints.map((p) => ({
+      id: String(p.id_estudo_ponto),
+      latitude: Number(p.latitude),
+      longitude: Number(p.longitude),
+    }));
+    const coverage = new Map<number, AtendimentoCalculado[]>();
+    const failedBuildings = new Map<number, BuildingsAround>();
+
+    for (const candidate of candidates) {
+      const gateway = { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) };
+      const buildings = await this.propagationService.loadBuildings(params, gateway.latitude, gateway.longitude);
+      if (buildings?.error) failedBuildings.set(candidate.id_estudo_ponto, buildings);
+
+      const links = await this.propagationService.calculateLinks(gateway, propagationPoints, params, buildings);
+      coverage.set(
+        candidate.id_estudo_ponto,
+        [...links.entries()]
+          .filter(([, link]) => link.covered)
+          .map(([id, link]) => ({
+            ponto: pointsById.get(id)!,
+            distanciaM: link.distanceM,
+            nivelSinalDbm: link.signalDbm,
+          })),
+      );
+    }
+
+    const params = this.propagationService.buildParameters(rf as PerfilRf);
+    const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
+    const propagationPoints = interestPoints.map((p) => ({
+      id: String(p.id_estudo_ponto),
+      latitude: Number(p.latitude),
+      longitude: Number(p.longitude),
+    }));
+    const coverage = new Map<number, AtendimentoCalculado[]>();
+    const failedBuildings = new Map<number, BuildingsAround>();
+
+    for (const candidate of candidates) {
+      const gateway = { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) };
+      const buildings = await this.propagationService.loadBuildings(params, gateway.latitude, gateway.longitude);
+      if (buildings?.error) failedBuildings.set(candidate.id_estudo_ponto, buildings);
+
+      const links = await this.propagationService.calculateLinks(gateway, propagationPoints, params, buildings);
+      coverage.set(
+        candidate.id_estudo_ponto,
+        [...links.entries()]
+          .filter(([, link]) => link.covered)
+          .map(([id, link]) => ({
+            ponto: pointsById.get(id)!,
+            distanciaM: link.distanceM,
+            nivelSinalDbm: link.signalDbm,
+          })),
+      );
+    }
+
     const result = this.recommendationUtils.CalculateRecommendation(
       candidates,
       interestPoints,
       rf as PerfilRf,
+      coverage,
     );
 
     const totalInterest = interestPoints.length;
@@ -66,65 +128,66 @@ export class RecommendationService {
     const gatewayCost = (rf as PerfilRf).custo_estimado_gateway ?? 0;
     const totalCost = result.gateways.length * gatewayCost;
 
-    const scenarioQuery = `
-      INSERT INTO cenarios 
-      (id_estudo, id_perfil_rf, id_criterio_instalacao, nome, status, quantidade_gateways, pontos_interesse, pontos_cobertos, pontos_nao_cobertos, percentual_cobertura, custo_total_estimado, executado_em)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      RETURNING *;
-    `;
-    const scenarioValues = [
-      input.id_estudo,
-      input.id_perfil_rf,
-      input.id_criterio_instalacao ?? null,
-      input.nome_cenario ?? `Recomendação inicial - estudo ${input.id_estudo}`,
-      "DEFINITIVO",
-      result.gateways.length,
-      totalInterest,
-      totalCovered,
-      result.pontosNaoCobertos.length,
-      totalInterest > 0 ? Math.round((totalCovered / totalInterest) * 100) : 0,
-      totalCost,
-      new Date().toISOString(),
-    ];
+    const { data: scenario, error: scError } = await supabase
+      .from("cenarios")
+      .insert({
+        id_estudo: input.id_estudo,
+        id_perfil_rf: input.id_perfil_rf,
+        id_criterio_instalacao: input.id_criterio_instalacao ?? null,
+        nome:
+          input.nome_cenario ??
+          `Recomendação inicial - estudo ${input.id_estudo}`,
+        status: "DEFINITIVO",
+        quantidade_gateways: result.gateways.length,
+        pontos_interesse: totalInterest,
+        pontos_cobertos: totalCovered,
+        pontos_nao_cobertos: result.pontosNaoCobertos.length,
+        percentual_cobertura:
+          totalInterest > 0
+            ? Math.round((totalCovered / totalInterest) * 100)
+            : 0,
+        custo_total_estimado: totalCost,
+        executado_em: new Date().toISOString(),
+      }).select().single();
+      
+      if (scError) throw new Error(`Erro ao criar cenário: ${scError.message}`);
 
-    const scenarioResult = await pool.query(scenarioQuery, scenarioValues);
-    const scenario = scenarioResult.rows[0];
-    if (!scenario) throw new Error("Erro ao criar cenário.");
+      const coverageByGateway = new Map<number, Coverage>();
 
-    for (const gw of result.gateways) {
-      const gtwQuery = `
-        INSERT INTO cenario_gateways 
-        (id_cenario, id_estudo_ponto, quantidade_pontos_atendidos, custo_estimado)
-        VALUES ($1, $2, $3, $4)
-        RETURNING *;
-      `;
-      const gtwValues = [
-        scenario.id_cenario,
-        gw.candidato.id_estudo_ponto,
-        gw.atendimentos.length,
-        gatewayCost,
-      ];
+      for (const gw of result.gateways) {
+        const { data: scenarioGateway, error: gtwError } = await supabase.from("cenario_gateways")
+        .insert({
+            id_cenario: scenario.id_cenario,
+            id_estudo_ponto: gw.candidato.id_estudo_ponto,
+            quantidade_pontos_atendidos: gw.atendimentos.length,
+            custo_estimado: gatewayCost
+        }).select().single();
+        if (gtwError) throw new Error(`Erro ao criar gateway do cenário: ${gtwError.message}.`);
 
-      const gtwResult = await pool.query(gtwQuery, gtwValues);
-      const scenarioGateway = gtwResult.rows[0];
-      if (!scenarioGateway) throw new Error("Erro ao criar gateway do cenário.");
+        for (const at of gw.atendimentos) {
+          const { error:atError } = await supabase.from("cenario_atendimentos").insert({
+            id_cenario_gateway:  scenarioGateway.id_cenario_gateway,
+            id_estudo_ponto: at.ponto.id_estudo_ponto,
+            distancia_m: Math.round(at.distanciaM),
+            nivel_sinal_estimado_dbm: Math.round(at.nivelSinalDbm * 10) /10,
+          });
+          if (atError) throw new Error(`Erro ao criar atendimento do cenário: ${atError.message}.`);
+        }
 
-      for (const at of gw.atendimentos) {
-        const atQuery = `
-          INSERT INTO cenario_atendimentos 
-          (id_cenario_gateway, id_estudo_ponto, distancia_m, nivel_sinal_estimado_dbm)
-          VALUES ($1, $2, $3, $4);
-        `;
-        const atValues = [
-          scenarioGateway.id_cenario_gateway,
-          at.ponto.id_estudo_ponto,
-          Math.round(at.distanciaM),
-          Math.round(at.nivelSinalDbm * 10) / 10,
-        ];
-
-        await pool.query(atQuery, atValues);
+        const gatewayCoverage = await this.propagationService.buildCoverage(
+          Number(gw.candidato.latitude),
+          Number(gw.candidato.longitude),
+          params,
+          undefined,
+          failedBuildings.get(gw.candidato.id_estudo_ponto),
+        );
+        await this.propagationService.saveGatewayCoverage(scenarioGateway.id_cenario_gateway, gatewayCoverage, params);
+        coverageByGateway.set(gw.candidato.id_estudo_ponto, gatewayCoverage);
       }
-    }
+
+      const consolidatedCoverage = result.gateways.length > 0
+        ? await this.propagationService.saveScenarioCoverage(scenario.id_cenario)
+        : null;
 
     const notCoveredByType = new Map<string, number>();
     for (const point of result.pontosNaoCobertos) {
@@ -132,11 +195,11 @@ export class RecommendationService {
       notCoveredByType.set(tipo, (notCoveredByType.get(tipo) ?? 0) + 1);
     }
 
-    const totalByType = new Map<string, number>();
-    for (const point of interestPoints) {
-      const tipo = point.tipo_ativo ?? "desconhecido";
-      totalByType.set(tipo, (totalByType.get(tipo) ?? 0) + 1);
-    }
+      const totalByType = new Map<string, number>();
+      for (const point of interestPoints) {
+        const tipo = point.tipo_ativo ?? "desconhecido";
+        totalByType.set(tipo, (totalByType.get(tipo) ?? 0) + 1);
+      }
 
     const byCategory = [...totalByType.entries()].map(
       ([tipo, total]) => ({
@@ -146,30 +209,36 @@ export class RecommendationService {
       }),
     ).sort((a, b) => b.total - a.total);
 
-    return {
-      id_cenario: scenario.id_cenario,
-      quantidade_gateways: result.gateways.length,
-      percentual_cobertura: scenario.percentual_cobertura,
-      custo_total_estimado: totalCost,
-      pontos_interesse: totalInterest,
-      pontos_cobertos: totalCovered,
-      pontos_nao_cobertos: result.pontosNaoCobertos.length,
-      por_categoria: byCategory,
-      gateways: result.gateways.map((gw) => ({
-        id_estudo_ponto: gw.candidato.id_estudo_ponto,
-        id_ativo_bdgd: gw.candidato.id_ativo_bdgd,
-        rotulo: gw.candidato.rotulo,
-        latitude: gw.candidato.latitude,
-        longitude: gw.candidato.longitude,
-        quantidade_atendidos: gw.atendimentos.length,
-        atributos: gw.candidato.atributos ?? {},
-        atendidos: gw.atendimentos.map((a) => ({
-          id_estudo_ponto: a.ponto.id_estudo_ponto,
-          tipo_ativo: a.ponto.tipo_ativo,
-          distancia_m: Math.round(a.distanciaM),
-          nivel_sinal_estimado_dbm: Math.round(a.nivelSinalDbm * 10) / 10,
-        })),
-      })),
-    };
+      return { 
+        id_cenario: scenario.id_cenario,
+        quantidade_gateways: result.gateways.length,
+        percentual_cobertura: scenario.percentual_cobertura,
+        custo_total_estimado: totalCost,
+        pontos_interesse: totalInterest,
+        pontos_cobertos: totalCovered,
+        pontos_nao_cobertos: result.pontosNaoCobertos.length,
+        por_categoria: byCategory,
+        mancha_consolidada: consolidatedCoverage,
+        gateways: result.gateways.map((gw) => ({
+          id_estudo_ponto: gw.candidato.id_estudo_ponto,
+          id_ativo_bdgd: gw.candidato.id_ativo_bdgd,
+          rotulo: gw.candidato.rotulo,
+          latitude: gw.candidato.latitude,
+          longitude: gw.candidato.longitude,
+          quantidade_atendidos: gw.atendimentos.length,
+          atributos: gw.candidato.atributos ?? {},
+          mancha_cobertura: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.geometry ?? null,
+          alcance_medio_m: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.mean_range_m ?? null,
+          modelo_propagacao: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.model ?? null,
+          edificacoes_consideradas: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.buildings_considered ?? false,
+          quantidade_edificacoes: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.buildings_count ?? 0,
+          atendidos: gw.atendimentos.map((a) => ({
+            id_estudo_ponto: a.ponto.id_estudo_ponto,
+            tipo_ativo: a.ponto.tipo_ativo,
+            distancia_m: Math.round(a.distanciaM),
+            nivel_sinal_estimado_dbm: Math.round(a.nivelSinalDbm * 10)/10,
+          }))
+        }))
+      }
   }
 }

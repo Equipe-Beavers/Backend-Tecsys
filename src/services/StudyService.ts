@@ -1,9 +1,9 @@
+import { supabase } from "../database/supabase.js";
 import { pool } from "../database/pool.js";
-import type {
-  CriarEstudoPonto,
-  EstudoPonto,
-} from "../interface/estudo-ponto.js";
-import type { CriarEstudo, Estudo } from "../interface/estudo.js";
+import { createStudyQuery, listStudiesQuery, getStudyQuery, updateStudyQuery, deleteStudyQuery } from "../database/queries.js";
+import type { CriarEstudoPonto, EstudoPonto } from "../interface/estudo-ponto.js";
+import type { CriarEstudo, Estudo, UpdateStudyDTO } from "../interface/estudo.js";
+import { StudyError } from "../utils/StudyError.js";
 import { ValidationService } from "./ValidationService.js";
 
 export class StudyService {
@@ -13,41 +13,76 @@ export class StudyService {
     this.validationService = new ValidationService();
   }
 
-  async createStudy(studyData: CriarEstudo): Promise<Estudo> {
-    const estudo = [
-      studyData.id_usuario,
-      studyData.tipo_delimitacao,
-      studyData.uf ?? null,
-      studyData.municipio ?? null,
-      studyData.bairro ?? null,
-      studyData.geom ? JSON.stringify(studyData.geom) : null,
-      studyData.nome.trim(),
-      studyData.descricao?.trim() || null,
-      studyData.distribuidora?.trim() || null,
-      studyData.versao_bdgd?.trim() || null,
-      studyData.nome_base_externa?.trim() || null,
-      studyData.tipos_ativo_selecionados ? JSON.stringify(studyData.tipos_ativo_selecionados) : null,
-      studyData.status ?? "AGUARDANDO_SELECAO",
-    ];
+    async createStudy(studyData: CriarEstudo) {
+        const estudo = {
+        id_usuario: studyData.id_usuario,
+        id_perfil_rf: studyData.id_perfil_rf,
+        id_criterio_instalacao: studyData.id_criterio_instalacao,
+        tipo_delimitacao: studyData.tipo_delimitacao,
+        uf: studyData.uf ?? null,
+        municipio: studyData.municipio ?? null,
+        bairro: studyData.bairro ?? null,
+        geom: studyData.geom ?? null,
+        nome: studyData.nome.trim(),
+        descricao: studyData.descricao?.trim() || null,
+        distribuidora: studyData.distribuidora?.trim() || null,
+        versao_bdgd: studyData.versao_bdgd?.trim() || null,
+        nome_base_externa: studyData.nome_base_externa?.trim() || null,
+        tipos_ativo_selecionados: studyData.tipos_ativo_selecionados ?? null,
+        status: studyData.status ?? "AGUARDANDO_SELECAO",
+        };
 
-    const query = `
-      INSERT INTO estudos 
-      (id_usuario, tipo_delimitacao, uf, municipio, bairro, geom, nome, descricao, distribuidora, versao_bdgd, nome_base_externa, tipos_ativo_selecionados, status)
-      VALUES (
-        $1, $2, $3, $4, $5, 
-        CASE 
-          WHEN $6::text IS NULL THEN NULL 
-          ELSE ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($6), 4326), 4674)
-        END, 
-        $7, $8, $9, $10, $11, $12, $13
-      ) RETURNING *;
-    `;
+        const { rows } = await pool.query(createStudyQuery, [JSON.stringify(estudo)]);
+        if (!rows[0]) {
+            throw new Error("Selecione um perfil RF e um critério de instalação pertencentes ao usuário do estudo.");
+        }
+        return this.mapStudy(rows[0]);
+    }
 
-    const result = await pool.query(query, estudo);
+    async listStudies(userId?: number): Promise<Estudo[]> {
+        const { rows } = await pool.query(listStudiesQuery, [userId ?? null]);
+        return rows.map((row) => this.mapStudy(row));
+    }
 
-    if (!result.rows[0]) throw new Error("Erro ao criar estudo.");
-    return result.rows[0] as Estudo;
-  }
+    async getStudy(id: number): Promise<Estudo> {
+        const { rows } = await pool.query(getStudyQuery, [id]);
+        if (!rows[0]) throw new StudyError(404, "Estudo não encontrado.");
+        return this.mapStudy(rows[0]);
+    }
+
+    async updateStudy(id: number, input: UpdateStudyDTO): Promise<Estudo> {
+        const values = { ...input };
+        if (values.nome !== undefined) values.nome = values.nome.trim();
+        if (values.descricao !== undefined) values.descricao = values.descricao?.trim() || null;
+        const { rows } = await pool.query(updateStudyQuery, [id, JSON.stringify(values)]);
+        if (!rows[0]) {
+            await this.getStudy(id);
+            throw new StudyError(400, "Selecione um perfil RF e um critério de instalação pertencentes ao usuário do estudo.");
+        }
+        return this.mapStudy(rows[0]);
+    }
+
+    async deleteStudy(id: number): Promise<void> {
+        try {
+            const { rows } = await pool.query(deleteStudyQuery, [id]);
+            if (!rows[0]) throw new StudyError(404, "Estudo não encontrado.");
+        } catch (error) {
+            if (typeof error === "object" && error !== null && "code" in error && error.code === "23503") {
+                throw new StudyError(409, "Não é possível excluir um estudo vinculado a outros registros.");
+            }
+            throw error;
+        }
+    }
+
+    private mapStudy(row: Record<string, unknown>): Estudo {
+        return {
+            ...row,
+            id_estudo: Number(row.id_estudo),
+            id_usuario: Number(row.id_usuario),
+            id_perfil_rf: Number(row.id_perfil_rf),
+            id_criterio_instalacao: Number(row.id_criterio_instalacao),
+        } as Estudo;
+    }
 
   async createStudyPoint(studyData: CriarEstudoPonto): Promise<EstudoPonto> {
     await this.validationService.verifyRecord(
