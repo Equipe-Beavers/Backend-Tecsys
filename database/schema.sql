@@ -3,6 +3,15 @@
 -- A aplicação não executa este arquivo automaticamente.
 CREATE EXTENSION IF NOT EXISTS postgis;
 
+CREATE TABLE IF NOT EXISTS spatial_ref_sys (
+  srid integer NOT NULL CHECK (srid > 0 AND srid <= 998999),
+  auth_name character varying,
+  auth_srid integer,
+  srtext character varying,
+  proj4text character varying,
+  CONSTRAINT spatial_ref_sys_pkey PRIMARY KEY (srid)
+);
+
 CREATE TABLE posicoes_geograficas (
     id_posicao BIGSERIAL PRIMARY KEY,
     tipo_posicao VARCHAR(30) NOT NULL,
