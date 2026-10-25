@@ -97,19 +97,20 @@ export class StudyService {
       coordinates: [studyData.longitude, studyData.latitude],
     };
 
-    const ponto = [
-      studyData.id_estudo,
-      studyData.origem,
-      studyData.id_ativo_bdgd ?? null,
-      studyData.tipo_ativo ?? null,
-      studyData.rotulo ?? null,
-      studyData.papel,
-      studyData.prioridade ?? null,
-      studyData.latitude,
-      studyData.longitude,
-      studyData.atributos ?? null,
-      JSON.stringify(geom),
-    ];
+        const ponto = {
+            id_estudo: studyData.id_estudo,
+            origem: studyData.origem,
+            id_ativo_bdgd: studyData.id_ativo_bdgd ?? null,
+            tipo_ativo: studyData.tipo_ativo ?? null,
+            rotulo: studyData.rotulo ?? null,
+            papel: studyData.papel,
+            prioridade: studyData.prioridade ?? null,
+            latitude: studyData.latitude,
+            longitude: studyData.longitude,
+            relevo_m: studyData.relevo_m ?? null,
+            atributos: studyData.atributos ?? null,
+            geom
+        }
 
     const query = `
       INSERT INTO estudo_pontos 
