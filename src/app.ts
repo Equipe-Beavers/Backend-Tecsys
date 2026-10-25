@@ -141,7 +141,13 @@ export class App {
       );
     });
 
-    this.app.post("/study/:id/recommendation", async (request, reply) => {
+    this.app.post("/estudos/:id/edificacoes/calculo", { schema: { params: studyParams }, bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
+      return studyController.CalculateStudyBuildings(
+        request as Parameters<StudyController["CalculateStudyBuildings"]>[0], reply,
+      );
+    });
+
+    this.app.post("/study/:id/recommendation", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
       await recommendationController.GenerateRecommendation(
         request as Parameters<RecommendationController["GenerateRecommendation"]>[0],
         reply

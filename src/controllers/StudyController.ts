@@ -67,6 +67,14 @@ export class StudyController {
         }
     }
 
+    async CalculateStudyBuildings(request: FastifyRequest<{ Params: { id: number }; Body: unknown }>, reply: FastifyReply) {
+        try {
+            return reply.send(await this.studyService.calculateStudyBuildings(request.params.id, request.body));
+        } catch (error) {
+            return this.HandleError(error, request, reply);
+        }
+    }
+
     async CreateStudyPoint(request: FastifyRequest <{Body: CriarEstudoPonto}>, reply: FastifyReply) {
         try {
             const data = await this.studyService.createStudyPoint(request.body);
