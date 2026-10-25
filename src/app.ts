@@ -49,6 +49,8 @@ export class App {
     const installCriterionController = new InstallCriterionController();
     const rfControler = new RFController();
     const recommendationController = new RecommendationController();
+    const regionsController = new RegionsController();
+    const activeController = new ActiveController();
     const buildingController = new BuildingController();
     const propagationController = new PropagationController();
     const activeController = new ActiveController();

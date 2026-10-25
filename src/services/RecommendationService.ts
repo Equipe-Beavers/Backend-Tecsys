@@ -1,4 +1,4 @@
-import { supabase } from "../database/supabase.js";
+import { pool } from "../database/pool.js";
 import type { EstudoPonto } from "../interface/estudo-ponto.js";
 import type { PerfilRf } from "../interface/perfil-rf.js";
 import { RecommendationUtils, type AtendimentoCalculado } from "../utils/RecommendationUtils.js";
@@ -21,30 +21,27 @@ export class RecommendationService {
     this.recommendationUtils = new RecommendationUtils();
     this.propagationService = new PropagationService();
   }
+
   async generateRecommendation(input: GerarRecomendacaoInput) {
-    const { data: study, error: sError } = await supabase
-      .from("estudos")
-      .select("id_estudo")
-      .eq("id_estudo", input.id_estudo)
-      .maybeSingle();
-    if (sError) throw new Error(`Erro ao consultar estudo: ${sError.message}`);
-    if (!study) throw new Error(`Estudo não encontrado.`);
+    const studyResult = await pool.query(
+      "SELECT id_estudo FROM estudos WHERE id_estudo = $1",
+      [input.id_estudo]
+    );
+    const study = studyResult.rows[0];
+    if (!study) throw new Error("Estudo não encontrado.");
 
-    const { data: rf, error: rfError } = await supabase
-      .from("perfis_rf")
-      .select("*")
-      .eq("id_perfil_rf", input.id_perfil_rf)
-      .maybeSingle();
-    if (rfError)
-      throw new Error(`Erro ao consultar perfil de RF: ${rfError.message}.`);
-    if (!rf) throw new Error(`Perfil de RF não encontrado.`);
+    const rfResult = await pool.query(
+      "SELECT * FROM perfis_rf WHERE id_perfil_rf = $1",
+      [input.id_perfil_rf]
+    );
+    const rf = rfResult.rows[0];
+    if (!rf) throw new Error("Perfil de RF não encontrado.");
 
-    const { data: points, error: pError } = await supabase
-      .from("estudo_pontos")
-      .select("*")
-      .eq("id_estudo", input.id_estudo);
-    if (pError)
-      throw new Error(`Erro ao consultar pontos de estudo: ${pError.message}`);
+    const pointsResult = await pool.query(
+      "SELECT * FROM estudo_pontos WHERE id_estudo = $1",
+      [input.id_estudo]
+    );
+    const points = pointsResult.rows;
 
     const allPoints = (points ?? []) as EstudoPonto[];
     const candidates = allPoints.filter(
@@ -56,12 +53,40 @@ export class RecommendationService {
 
     if (candidates.length === 0)
       throw new Error(
-        `O estudo não possui pontos marcados como candidato ou ambos.`,
+        "O estudo não possui pontos marcados como candidato ou ambos.",
       );
     if (interestPoints.length === 0)
       throw new Error(
-        `O estudo não possui nenhum ponto de interesse (papel interesse ou ambos).`,
+        "O estudo não possui nenhum ponto de interesse (papel interesse ou ambos).",
       );
+
+    const params = this.propagationService.buildParameters(rf as PerfilRf);
+    const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
+    const propagationPoints = interestPoints.map((p) => ({
+      id: String(p.id_estudo_ponto),
+      latitude: Number(p.latitude),
+      longitude: Number(p.longitude),
+    }));
+    const coverage = new Map<number, AtendimentoCalculado[]>();
+    const failedBuildings = new Map<number, BuildingsAround>();
+
+    for (const candidate of candidates) {
+      const gateway = { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) };
+      const buildings = await this.propagationService.loadBuildings(params, gateway.latitude, gateway.longitude);
+      if (buildings?.error) failedBuildings.set(candidate.id_estudo_ponto, buildings);
+
+      const links = await this.propagationService.calculateLinks(gateway, propagationPoints, params, buildings);
+      coverage.set(
+        candidate.id_estudo_ponto,
+        [...links.entries()]
+          .filter(([, link]) => link.covered)
+          .map(([id, link]) => ({
+            ponto: pointsById.get(id)!,
+            distanciaM: link.distanceM,
+            nivelSinalDbm: link.signalDbm,
+          })),
+      );
+    }
 
     const params = this.propagationService.buildParameters(rf as PerfilRf);
     const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
@@ -164,11 +189,11 @@ export class RecommendationService {
         ? await this.propagationService.saveScenarioCoverage(scenario.id_cenario)
         : null;
 
-      const notCoveredByType = new Map<string, number>();
-      for (const point of result.pontosNaoCobertos) {
-        const tipo = point.tipo_ativo ?? "desconhecido";
-        notCoveredByType.set(tipo, (notCoveredByType.get(tipo) ?? 0) + 1);
-      }
+    const notCoveredByType = new Map<string, number>();
+    for (const point of result.pontosNaoCobertos) {
+      const tipo = point.tipo_ativo ?? "desconhecido";
+      notCoveredByType.set(tipo, (notCoveredByType.get(tipo) ?? 0) + 1);
+    }
 
       const totalByType = new Map<string, number>();
       for (const point of interestPoints) {
@@ -176,9 +201,13 @@ export class RecommendationService {
         totalByType.set(tipo, (totalByType.get(tipo) ?? 0) + 1);
       }
 
-      const byCategory = [...totalByType.entries()].map(
-        ([tipo, total]) => ({tipo_ativo: tipo, total, nao_cobertos: notCoveredByType.get(tipo) ?? 0}),
-      ).sort((a, b) => b.total - a.total);
+    const byCategory = [...totalByType.entries()].map(
+      ([tipo, total]) => ({
+        tipo_ativo: tipo,
+        total,
+        nao_cobertos: notCoveredByType.get(tipo) ?? 0,
+      }),
+    ).sort((a, b) => b.total - a.total);
 
       return {
         id_cenario: scenario.id_cenario,
