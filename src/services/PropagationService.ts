@@ -1,5 +1,4 @@
 import { pool } from "../database/pool.js";
-import { supabase } from "../database/supabase.js";
 import {
     findScenarioCoverageQuery,
     findScenarioGatewaysCoverageQuery,
@@ -196,12 +195,11 @@ export class PropagationService {
     }
 
     async generateCoverage(input: GenerateCoverageDTO): Promise<Coverage> {
-        const { data: profile, error } = await supabase
-            .from("perfis_rf")
-            .select("*")
-            .eq("id_perfil_rf", input.id_perfil_rf)
-            .maybeSingle();
-        if (error) throw new Error(`Erro ao consultar perfil de RF: ${error.message}.`);
+        const { rows } = await pool.query(
+            "SELECT * FROM perfis_rf WHERE id_perfil_rf = $1",
+            [input.id_perfil_rf],
+        );
+        const profile = rows[0];
         if (!profile) throw new Error("Perfil de RF não encontrado.");
 
         const params = this.buildParameters(profile as PerfilRf, input.gateway_height_m);
