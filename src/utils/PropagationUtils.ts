@@ -46,7 +46,7 @@ export class PropagationUtils {
             gatewayHeightM: gatewayHeightM ?? this.NumberOr(profile.altura_gateway_m, 15),
             deviceHeightM: this.NumberOr(profile.altura_dispositivo_m, 2),
             environment,
-            considerBuildings: profile.considera_edificacoes ?? true,
+            considerBuildings: true,
             estimatedRangeM: profile.alcance_estimado_m != null ? Number(profile.alcance_estimado_m) : null,
         };
     }

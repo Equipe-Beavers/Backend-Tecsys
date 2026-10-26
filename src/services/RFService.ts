@@ -37,10 +37,6 @@ export class RFService {
       altura_dispositivo_m: input.altura_dispositivo_m ?? null,
       capacidade_max_equipamentos: input.capacidade_max_equipamentos ?? null,
       atenuacao_adicional_db: input.atenuacao_adicional_db ?? null,
-      considera_relevo: input.considera_relevo ?? true,
-      considera_vegetacao: input.considera_vegetacao ?? true,
-      considera_edificacoes: input.considera_edificacoes ?? true,
-      considera_antenas: input.considera_antenas ?? true,
     };
     const { rows } = await pool.query(createRFProfileQuery, [JSON.stringify(profile)]);
     return this.mapLocalProfile(rows[0]);
@@ -84,10 +80,6 @@ export class RFService {
         altura_dispositivo_m: row.altura_dispositivo_m == null ? null : Number(row.altura_dispositivo_m),
         capacidade_max_equipamentos: row.capacidade_max_equipamentos == null ? null : Number(row.capacidade_max_equipamentos),
         atenuacao_adicional_db: row.atenuacao_adicional_db == null ? null : Number(row.atenuacao_adicional_db),
-        considera_relevo: Boolean(row.considera_relevo),
-        considera_vegetacao: Boolean(row.considera_vegetacao),
-        considera_edificacoes: Boolean(row.considera_edificacoes),
-        considera_antenas: Boolean(row.considera_antenas),
         criado_em: row.criado_em instanceof Date ? row.criado_em.toISOString() : row.criado_em,
         atualizado_em: row.atualizado_em instanceof Date ? row.atualizado_em.toISOString() : row.atualizado_em,
     };
@@ -117,17 +109,13 @@ export class RFService {
       rfData.periodo_limite_mensagens ?? null,
       rfData.custo_estimado_gateway ?? null,
       rfData.caracteristicas_antena ?? null,
-      rfData.considera_relevo ?? true,
-      rfData.considera_vegetacao ?? true,
-      rfData.considera_edificacoes ?? true,
-      rfData.considera_obstaculos ?? true,
       rfData.parametros_adicionais ?? null,
     ];
 
     const query = `
       INSERT INTO perfis_rf 
-      (id_usuario, nome, modelo_gateway, frequencia_mhz, potencia_transmissao_dbm, sensibilidade_recepcao_dbm, alcance_estimado_m, altura_gateway_m, altura_dispositivo_m, capacidade_max_equipamentos, quantidade_canais, limite_mensagens_transmissoes, periodo_limite_mensagens, custo_estimado_gateway, caracteristicas_antena, considera_relevo, considera_vegetacao, considera_edificacoes, considera_obstaculos, parametros_adicionais)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING *;
+      (id_usuario, nome, modelo_gateway, frequencia_mhz, potencia_transmissao_dbm, sensibilidade_recepcao_dbm, alcance_estimado_m, altura_gateway_m, altura_dispositivo_m, capacidade_max_equipamentos, quantidade_canais, limite_mensagens_transmissoes, periodo_limite_mensagens, custo_estimado_gateway, caracteristicas_antena, parametros_adicionais)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *;
     `;
 
     const result = await pool.query(query, perfil);

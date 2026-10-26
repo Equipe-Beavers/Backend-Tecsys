@@ -143,7 +143,6 @@ CREATE TABLE criterios_instalacao (
   nome VARCHAR(150) NOT NULL,
   tipos_elementos_permitidos JSONB,
   tipos_elementos_proibidos JSONB,
-  requer_alimentacao_eletrica BOOLEAN,
   distancia_minima_ativos_m DECIMAL(12,2),
   distancia_maxima_ativos_m DECIMAL(12,2),
   CONSTRAINT criterios_instalacao_distancias_validas CHECK (distancia_minima_ativos_m IS NULL OR (distancia_minima_ativos_m >= 0 AND (distancia_maxima_ativos_m IS NULL OR distancia_minima_ativos_m <= distancia_maxima_ativos_m))),
@@ -153,9 +152,6 @@ CREATE TABLE criterios_instalacao (
   ),
   limite_gateways INT,
   relevo JSONB,
-  vegetacoes JSONB,
-  edificacoes JSONB,
-  antenas JSONB,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   atualizado_em TIMESTAMP,
   CONSTRAINT fk_criterios_usuario FOREIGN KEY (id_usuario) REFERENCES usuarios (id_usuario)

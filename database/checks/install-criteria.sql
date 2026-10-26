@@ -11,14 +11,10 @@ WITH required_columns(column_name, expected_type, expected_nullable) AS (VALUES
   ('nome', 'character varying', 'NO'),
   ('tipos_elementos_permitidos', 'jsonb', 'YES'),
   ('tipos_elementos_proibidos', 'jsonb', 'YES'),
-  ('requer_alimentacao_eletrica', 'boolean', 'YES'),
   ('distancia_minima_ativos_m', 'numeric', 'YES'),
   ('distancia_maxima_ativos_m', 'numeric', 'YES'),
   ('limite_gateways', 'integer', 'YES'),
   ('relevo', 'jsonb', 'YES'),
-  ('vegetacoes', 'jsonb', 'YES'),
-  ('edificacoes', 'jsonb', 'YES'),
-  ('antenas', 'jsonb', 'YES'),
   ('criado_em', 'timestamp without time zone', 'NO'),
   ('atualizado_em', 'timestamp without time zone', 'YES')
 )

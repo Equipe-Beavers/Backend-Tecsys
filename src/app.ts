@@ -294,14 +294,10 @@ export class App {
       // JSONB shape is not prescribed by the approved model.
       tipos_elementos_permitidos: {},
       tipos_elementos_proibidos: {},
-      requer_alimentacao_eletrica: { type: ["boolean", "null"] },
       distancia_minima_ativos_m: { type: ["number", "null"], minimum: 10, maximum: 500 },
       distancia_maxima_ativos_m: { type: ["number", "null"], minimum: 10, maximum: 500 },
       limite_gateways: { type: ["integer", "null"], minimum: 1, maximum: 2147483647 },
       relevo: {},
-      vegetacoes: {},
-      edificacoes: {},
-      antenas: {},
     };
     this.app.post("/create-install-criterion", {
       schema: { body: {
@@ -383,10 +379,6 @@ export class App {
       altura_dispositivo_m: { type: ["number", "null"], minimum: 0 },
       capacidade_max_equipamentos: { type: ["integer", "null"] },
       atenuacao_adicional_db: { type: ["number", "null"], minimum: 0 },
-      considera_relevo: { type: "boolean" },
-      considera_vegetacao: { type: "boolean" },
-      considera_edificacoes: { type: "boolean" },
-      considera_antenas: { type: "boolean" },
     };
     const rfProfileProperties = { id_usuario: criterionId, ...rfProfileFields };
     this.app.post("/calculate-rf-range", {
