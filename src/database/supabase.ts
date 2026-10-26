@@ -6,20 +6,16 @@ import "dotenv/config";
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl) {
-    throw new Error("SUPABASE_URL não definida no .env");
-}
-
-if (!supabaseServiceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY não definida no .env");
-}
-
-export const supabase = createClient(
-    supabaseUrl,
-    supabaseServiceRoleKey,
-    {
-        realtime: {
-            transport: WebSocket as unknown as WebSocketLikeConstructor
-        }
+// PostgreSQL-backed routes can start without Supabase credentials.
+function createSupabaseClient() {
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        return new Proxy({} as ReturnType<typeof createClient>, {
+            get() { throw new Error("Supabase indisponível: configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env."); }
+        });
     }
-);
+    return createClient(supabaseUrl, supabaseServiceRoleKey, {
+        realtime: { transport: WebSocket as unknown as WebSocketLikeConstructor }
+    });
+}
+
+export const supabase = createSupabaseClient();
