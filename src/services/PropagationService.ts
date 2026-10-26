@@ -19,6 +19,7 @@ import type {
     ScenarioCoverage,
 } from "../interface/PropagationDTO.js";
 import { PropagationUtils } from "../utils/PropagationUtils.js";
+import type { ProvidedBuildings } from "../utils/ProvidedBuildings.js";
 import { BuildingService, type BuildingsAround } from "./BuildingService.js";
 
 const DEFAULT_RAYS = 360;
@@ -43,10 +44,12 @@ export class PropagationService {
         params: PropagationParameters,
         latitude: number,
         longitude: number,
+        provided?: ProvidedBuildings | null,
     ): Promise<BuildingsAround | null> {
         if (!params.considerBuildings) return null;
         const rangeM = this.propagationUtils.MaxRangeM(params, true);
-        return this.buildingService.loadBuildingsAround(latitude, longitude, rangeM);
+        return provided?.Around(latitude, longitude, rangeM)
+            ?? this.buildingService.loadBuildingsAround(latitude, longitude, rangeM);
     }
 
     modelName(explicitBuildings: boolean, params: PropagationParameters): string {
@@ -136,9 +139,10 @@ export class PropagationService {
         params: PropagationParameters,
         rays = DEFAULT_RAYS,
         buildingsInput?: BuildingsAround | null,
+        provided?: ProvidedBuildings | null,
     ): Promise<Coverage> {
         const buildings = buildingsInput === undefined
-            ? await this.loadBuildings(params, latitude, longitude)
+            ? await this.loadBuildings(params, latitude, longitude, provided)
             : buildingsInput;
         const index = buildings?.index ?? null;
         const explicitBuildings = index !== null;

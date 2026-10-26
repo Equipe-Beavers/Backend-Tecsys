@@ -4,6 +4,8 @@ import { createStudyQuery, listStudiesQuery, getStudyQuery, updateStudyQuery, de
 import type { CriarEstudoPonto, EstudoPonto } from "../interface/estudo-ponto.js";
 import type { CriarEstudo, Estudo, UpdateStudyDTO } from "../interface/estudo.js";
 import { StudyError } from "../utils/StudyError.js";
+import { BuildingsCalculation } from "../utils/BuildingsCalculation.js";
+import { ProvidedBuildings } from "../utils/ProvidedBuildings.js";
 import { ValidationService } from "./ValidationService.js";
 
 export class StudyService {
@@ -72,6 +74,26 @@ export class StudyService {
             }
             throw error;
         }
+    }
+
+    // calculo dos edificios
+    async calculateStudyBuildings(id: number, buildingsData: unknown) {
+        const study = await this.getStudy(id);
+
+        const { rows } = await pool.query("SELECT frequencia_mhz FROM perfis_rf WHERE id_perfil_rf = $1", [study.id_perfil_rf]);
+        const frequencyMhz = Number(rows[0]?.frequencia_mhz);
+        if (!Number.isFinite(frequencyMhz) || frequencyMhz <= 0) {
+            throw new StudyError(400, "O perfil de RF do estudo não tem frequência válida.");
+        }
+
+        let provided: ProvidedBuildings;
+        try {
+            provided = ProvidedBuildings.From(buildingsData);
+        } catch (error) {
+            throw new StudyError(400, error instanceof Error ? error.message : "Edificações inválidas.");
+        }
+
+        return { id_estudo: id, ...new BuildingsCalculation().Calculate(provided, frequencyMhz) };
     }
 
     private mapStudy(row: Record<string, unknown>): Estudo {
