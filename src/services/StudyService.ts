@@ -1,4 +1,3 @@
-import { supabase } from "../database/supabase.js";
 import { pool } from "../database/pool.js";
 import { createStudyQuery, listStudiesQuery, getStudyQuery, updateStudyQuery, deleteStudyQuery } from "../database/queries.js";
 import type { CriarEstudoPonto, EstudoPonto } from "../interface/estudo-ponto.js";
@@ -97,31 +96,31 @@ export class StudyService {
       coordinates: [studyData.longitude, studyData.latitude],
     };
 
-        const ponto = {
-            id_estudo: studyData.id_estudo,
-            origem: studyData.origem,
-            id_ativo_bdgd: studyData.id_ativo_bdgd ?? null,
-            tipo_ativo: studyData.tipo_ativo ?? null,
-            rotulo: studyData.rotulo ?? null,
-            papel: studyData.papel,
-            prioridade: studyData.prioridade ?? null,
-            latitude: studyData.latitude,
-            longitude: studyData.longitude,
-            relevo_m: studyData.relevo_m ?? null,
-            atributos: studyData.atributos ?? null,
-            geom
-        }
+    const values = [
+      studyData.id_estudo,
+      studyData.origem,
+      studyData.id_ativo_bdgd ?? null,
+      studyData.tipo_ativo ?? null,
+      studyData.rotulo ?? null,
+      studyData.papel,
+      studyData.prioridade ?? null,
+      studyData.latitude,
+      studyData.longitude,
+      studyData.relevo_m ?? null,
+      studyData.atributos ?? null,
+      JSON.stringify(geom),
+    ];
 
     const query = `
       INSERT INTO estudo_pontos 
-      (id_estudo, origem, id_ativo_bdgd, tipo_ativo, rotulo, papel, prioridade, latitude, longitude, atributos, geom)
+      (id_estudo, origem, id_ativo_bdgd, tipo_ativo, rotulo, papel, prioridade, latitude, longitude, relevo_m, atributos, geom)
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
-        ST_GeomFromGeoJSON($11)
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+        ST_GeomFromGeoJSON($12)
       ) RETURNING *;
     `;
     
-    const result = await pool.query(query, ponto);
+    const result = await pool.query(query, values);
 
     if (!result.rows[0]) throw new Error("Não foi possível criar o ponto de estudo.");
     return result.rows[0] as EstudoPonto;

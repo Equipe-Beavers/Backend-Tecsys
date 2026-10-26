@@ -3,6 +3,7 @@ import type { EstudoPonto } from "../interface/estudo-ponto.js";
 import type { PerfilRf } from "../interface/perfil-rf.js";
 import { RecommendationUtils, type AtendimentoCalculado } from "../utils/RecommendationUtils.js";
 import { PropagationService } from "./PropagationService.js";
+import { ScenarioService } from "./ScenarioService.js";
 import type { BuildingsAround } from "./BuildingService.js";
 import type { Coverage } from "../interface/PropagationDTO.js";
 
@@ -16,10 +17,12 @@ export interface GerarRecomendacaoInput {
 export class RecommendationService {
   private recommendationUtils: RecommendationUtils;
   private propagationService: PropagationService;
+  private scenarioService: ScenarioService;
 
   constructor() {
     this.recommendationUtils = new RecommendationUtils();
     this.propagationService = new PropagationService();
+    this.scenarioService = new ScenarioService();
   }
 
   async generateRecommendation(input: GerarRecomendacaoInput) {
@@ -88,34 +91,6 @@ export class RecommendationService {
       );
     }
 
-    const params = this.propagationService.buildParameters(rf as PerfilRf);
-    const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
-    const propagationPoints = interestPoints.map((p) => ({
-      id: String(p.id_estudo_ponto),
-      latitude: Number(p.latitude),
-      longitude: Number(p.longitude),
-    }));
-    const coverage = new Map<number, AtendimentoCalculado[]>();
-    const failedBuildings = new Map<number, BuildingsAround>();
-
-    for (const candidate of candidates) {
-      const gateway = { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) };
-      const buildings = await this.propagationService.loadBuildings(params, gateway.latitude, gateway.longitude);
-      if (buildings?.error) failedBuildings.set(candidate.id_estudo_ponto, buildings);
-
-      const links = await this.propagationService.calculateLinks(gateway, propagationPoints, params, buildings);
-      coverage.set(
-        candidate.id_estudo_ponto,
-        [...links.entries()]
-          .filter(([, link]) => link.covered)
-          .map(([id, link]) => ({
-            ponto: pointsById.get(id)!,
-            distanciaM: link.distanceM,
-            nivelSinalDbm: link.signalDbm,
-          })),
-      );
-    }
-
     const result = this.recommendationUtils.CalculateRecommendation(
       candidates,
       interestPoints,
@@ -128,51 +103,44 @@ export class RecommendationService {
     const gatewayCost = (rf as PerfilRf).custo_estimado_gateway ?? 0;
     const totalCost = result.gateways.length * gatewayCost;
 
-    const { data: scenario, error: scError } = await supabase
-      .from("cenarios")
-      .insert({
-        id_estudo: input.id_estudo,
-        id_perfil_rf: input.id_perfil_rf,
-        id_criterio_instalacao: input.id_criterio_instalacao ?? null,
-        nome:
-          input.nome_cenario ??
-          `Recomendação inicial - estudo ${input.id_estudo}`,
-        status: "DEFINITIVO",
-        quantidade_gateways: result.gateways.length,
-        pontos_interesse: totalInterest,
-        pontos_cobertos: totalCovered,
-        pontos_nao_cobertos: result.pontosNaoCobertos.length,
-        percentual_cobertura:
-          totalInterest > 0
-            ? Math.round((totalCovered / totalInterest) * 100)
-            : 0,
-        custo_total_estimado: totalCost,
-        executado_em: new Date().toISOString(),
-      }).select().single();
+    const scenario = await this.scenarioService.createScenario({
+      id_estudo: input.id_estudo,
+      id_perfil_rf: input.id_perfil_rf,
+      id_criterio_instalacao: input.id_criterio_instalacao ?? null,
+      nome:
+        input.nome_cenario ??
+        `Recomendação inicial - estudo ${input.id_estudo}`,
+      status: "DEFINITIVO",
+      quantidade_gateways: result.gateways.length,
+      pontos_interesse: totalInterest,
+      pontos_cobertos: totalCovered,
+      pontos_nao_cobertos: result.pontosNaoCobertos.length,
+      percentual_cobertura:
+        totalInterest > 0
+          ? Math.round((totalCovered / totalInterest) * 100)
+          : 0,
+      custo_total_estimado: totalCost,
+      executado_em: new Date().toISOString(),
+    });
 
-      if (scError) throw new Error(`Erro ao criar cenário: ${scError.message}`);
+    const coverageByGateway = new Map<number, Coverage>();
 
-      const coverageByGateway = new Map<number, Coverage>();
+    for (const gw of result.gateways) {
+      const scenarioGateway = await this.scenarioService.createGatewayScenario({
+        id_cenario: scenario.id_cenario,
+        id_estudo_ponto: gw.candidato.id_estudo_ponto,
+        quantidade_pontos_atendidos: gw.atendimentos.length,
+        custo_estimado: gatewayCost,
+      });
 
-      for (const gw of result.gateways) {
-        const { data: scenarioGateway, error: gtwError } = await supabase.from("cenario_gateways")
-        .insert({
-            id_cenario: scenario.id_cenario,
-            id_estudo_ponto: gw.candidato.id_estudo_ponto,
-            quantidade_pontos_atendidos: gw.atendimentos.length,
-            custo_estimado: gatewayCost
-        }).select().single();
-        if (gtwError) throw new Error(`Erro ao criar gateway do cenário: ${gtwError.message}.`);
-
-        for (const at of gw.atendimentos) {
-          const { error:atError } = await supabase.from("cenario_atendimentos").insert({
-            id_cenario_gateway:  scenarioGateway.id_cenario_gateway,
-            id_estudo_ponto: at.ponto.id_estudo_ponto,
-            distancia_m: Math.round(at.distanciaM),
-            nivel_sinal_estimado_dbm: Math.round(at.nivelSinalDbm * 10) /10,
-          });
-          if (atError) throw new Error(`Erro ao criar atendimento do cenário: ${atError.message}.`);
-        }
+      for (const at of gw.atendimentos) {
+        await this.scenarioService.createServiceScenario({
+          id_cenario_gateway: scenarioGateway.id_cenario_gateway,
+          id_estudo_ponto: at.ponto.id_estudo_ponto,
+          distancia_m: Math.round(at.distanciaM),
+          nivel_sinal_estimado_dbm: Math.round(at.nivelSinalDbm * 10) / 10,
+        });
+      }
 
         const gatewayCoverage = await this.propagationService.buildCoverage(
           Number(gw.candidato.latitude),

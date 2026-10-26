@@ -53,8 +53,6 @@ export class App {
     const activeController = new ActiveController();
     const buildingController = new BuildingController();
     const propagationController = new PropagationController();
-    const activeController = new ActiveController();
-    const regionsController = new RegionsController();
 
     this.app.post("/create-user", async (request, reply) => {
       await userController.CreateUser(

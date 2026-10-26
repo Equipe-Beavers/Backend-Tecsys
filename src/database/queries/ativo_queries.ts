@@ -33,7 +33,7 @@ const assetCte = `
             pos.latitude,
             pos.longitude,
             pos.id_distribuidora,
-            a.registro_atual AND pos.registro_atual AS registro_atual,
+            pos.registro_atual,
             jsonb_build_object(
                 'altura', a.altura,
                 'material', a.material,
@@ -42,6 +42,10 @@ const assetCte = `
         FROM POSTES a
         JOIN POSICOES_GEOGRAFICAS pos
             ON pos.id_posicao = a.id_posicao
+        WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
 
         UNION ALL
 
@@ -55,11 +59,15 @@ const assetCte = `
             pos.latitude,
             pos.longitude,
             pos.id_distribuidora,
-            a.registro_atual AND pos.registro_atual AS registro_atual,
+            pos.registro_atual,
             jsonb_build_object('nome', a.nome) AS atributos
         FROM SUBESTACOES a
         JOIN POSICOES_GEOGRAFICAS pos
             ON pos.id_posicao = a.id_posicao
+        WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
 
         UNION ALL
 
@@ -73,7 +81,7 @@ const assetCte = `
             pos.latitude,
             pos.longitude,
             pos.id_distribuidora,
-            a.registro_atual AND pos.registro_atual AS registro_atual,
+            pos.registro_atual,
             jsonb_build_object(
                 'subestacao', a.subestacao,
                 'codigo_conjunto_aneel', a.codigo_conjunto_aneel
@@ -81,6 +89,10 @@ const assetCte = `
         FROM DISPOSITIVOS a
         JOIN POSICOES_GEOGRAFICAS pos
             ON pos.id_posicao = a.id_posicao
+        WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
     ),
     ativos AS (
         SELECT
@@ -114,21 +126,20 @@ const assetCte = `
             ON d.id = b.id_distribuidora
         LEFT JOIN tipos_dispositivos td
             ON td.id_tipo_dispositivo = b.tip_id
-        WHERE b.registro_atual = TRUE
     )
 `;
 
 export function findAssetsQuery(filters: AssetFilters) {
     const values: unknown[] = [
-        filters.minLatitude,
-        filters.maxLatitude,
         filters.minLongitude,
+        filters.minLatitude,
         filters.maxLongitude,
+        filters.maxLatitude,
     ];
 
     const conditions = [
-        `latitude BETWEEN $1 AND $2`,
-        `longitude BETWEEN $3 AND $4`,
+        `latitude BETWEEN $2 AND $4`,
+        `longitude BETWEEN $1 AND $3`,
     ];
 
     if (filters.distributors && filters.distributors.length > 0) {
@@ -245,47 +256,16 @@ export const findDeviceTypesQuery = `
 `;
 
 export const findDistributorsQuery = `
-    WITH ativos AS (
-        SELECT
-            pos.id_distribuidora,
-            pos.latitude,
-            pos.longitude,
-            poste.registro_atual AND pos.registro_atual AS registro_atual
-        FROM POSTES poste
-        JOIN POSICOES_GEOGRAFICAS pos
-            ON pos.id_posicao = poste.id_posicao
-
-        UNION ALL
-
-        SELECT
-            pos.id_distribuidora,
-            pos.latitude,
-            pos.longitude,
-            subestacao.registro_atual AND pos.registro_atual AS registro_atual
-        FROM SUBESTACOES subestacao
-        JOIN POSICOES_GEOGRAFICAS pos
-            ON pos.id_posicao = subestacao.id_posicao
-
-        UNION ALL
-
-        SELECT
-            pos.id_distribuidora,
-            pos.latitude,
-            pos.longitude,
-            dispositivo.registro_atual AND pos.registro_atual AS registro_atual
-        FROM DISPOSITIVOS dispositivo
-        JOIN POSICOES_GEOGRAFICAS pos
-            ON pos.id_posicao = dispositivo.id_posicao
-    )
     SELECT
         d.nome,
-        AVG(a.latitude) AS latitude,
-        AVG(a.longitude) AS longitude,
+        AVG(pos.latitude) AS latitude,
+        AVG(pos.longitude) AS longitude,
         COUNT(*)::int AS total_ativos
-    FROM ativos a
+    FROM posicoes_geograficas pos
     JOIN distribuidoras d
-        ON d.id = a.id_distribuidora
-    WHERE a.registro_atual = TRUE
+        ON d.id = pos.id_distribuidora
+    WHERE pos.registro_atual = TRUE
+      AND pos.tipo_posicao IN ('POSTE', 'SUBESTACAO', 'DISPOSITIVO')
     GROUP BY d.id, d.nome
     ORDER BY d.nome
 `;
