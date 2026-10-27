@@ -95,3 +95,21 @@ npm run dev
 ```
 
 O servidor ficará disponível em `http://localhost:3000` e será reiniciado automaticamente quando os arquivos TypeScript forem alterados.
+## Edificações no cálculo de propagação
+
+As edificações vêm da [Overture Maps](https://docs.overturemaps.org/guides/buildings/) (tema `buildings`, licença ODbL), consultadas **sob demanda** pelo backend. Nada é importado nem gravado no banco: os dados ficam só num cache em memória, com validade e limite de tamanho, e somem quando o servidor reinicia.
+
+- O catálogo STAC da Overture informa o retângulo de cada arquivo GeoParquet; só os arquivos que tocam a região são lidos (DuckDB em memória). A primeira consulta de uma região leva de 20 a 50 s; as seguintes usam o cache.
+- **Geometria, largura, profundidade e área**: sempre calculadas a partir do contorno (retângulo mínimo).
+- **Altura**: `height` da fonte → `num_floors` × 3 m → `BUILDING_DEFAULT_FLOORS` × 3 m (6 m por padrão). O campo `origem_altura` indica qual regra foi usada (`INFORMADA`, `PAVIMENTOS`, `PADRAO`).
+- **Material**: `facade_material` da fonte quando existe; senão **concreto** (`CONCRETO`), o padrão do projeto. O campo `origem_material` indica `INFORMADO` ou `PADRAO`.
+- Se a fonte estiver fora do ar, `GET /list-buildings` responde 503, e a mancha/recomendação segue sem as edificações, informando o motivo em `buildings_error`.
+
+| Rota | Descrição |
+| --- | --- |
+| `GET /list-buildings` | Edificações de um retângulo (máx. 0,1° de lado). `format=geojson` devolve uma FeatureCollection. |
+| `GET /list-building-materials` | Materiais e perda por parede (900/2400 MHz). |
+| `POST /calculate-building-obstruction` | Edificações cruzadas por enlaces e a perda extra de cada um. |
+| `POST /generate-coverage` | Mancha de cobertura de um gateway com as edificações. |
+
+Variáveis opcionais: `OVERTURE_RELEASE`, `BUILDINGS_QUERY_TIMEOUT_MS`, `BUILDINGS_CACHE_TTL_MIN`, `BUILDINGS_CACHE_MAX`, `BUILDING_DEFAULT_FLOORS`, `BUILDINGS_MAX_RADIUS_M` (veja `.env.example`).

@@ -12,4 +12,3 @@ export const assetTypes = [
 ] as const;
 
 export type AssetType = (typeof assetTypes)[number];
-

@@ -6,6 +6,7 @@ export interface PerfilRf {
     frequencia_mhz: number;
     potencia_transmissao_dbm: number;
     sensibilidade_recepcao_dbm: number;
+    atenuacao_adicional_db?: number | null;
     alcance_estimado_m: number | null;
     altura_gateway_m: number | null;
     altura_dispositivo_m: number | null;
@@ -15,10 +16,6 @@ export interface PerfilRf {
     periodo_limite_mensagens: string | null;
     custo_estimado_gateway: number | null;
     caracteristicas_antena: Record<string, unknown> | null;
-    considera_relevo: boolean;
-    considera_vegetacao: boolean;
-    considera_edificacoes: boolean;
-    considera_obstaculos: boolean;
     parametros_adicionais: Record<string, unknown> | null;
     criado_em: string;
     atualizado_em: string | null;
@@ -40,10 +37,6 @@ export interface CriarPerfilRf {
     periodo_limite_mensagens?: string | null;
     custo_estimado_gateway?: number | null;
     caracteristicas_antena?: Record<string, unknown> | null;
-    considera_relevo?: boolean;
-    considera_vegetacao?: boolean;
-    considera_edificacoes?: boolean;
-    considera_obstaculos?: boolean;
     parametros_adicionais?: Record<string, unknown> | null;
 }
 
@@ -63,10 +56,13 @@ export interface CreateRFProfileInput {
     altura_dispositivo_m?: number | null;
     capacidade_max_equipamentos?: number | null;
     atenuacao_adicional_db?: number | null;
-    considera_relevo?: boolean;
-    considera_vegetacao?: boolean;
-    considera_edificacoes?: boolean;
-    considera_antenas?: boolean;
+}
+
+export interface RFRangeCalculationInput {
+    frequencia_mhz: number;
+    potencia_transmissao_dbm: number;
+    sensibilidade_recepcao_dbm: number;
+    atenuacao_adicional_db: number;
 }
 
 export type UpdateRFProfileInput = Partial<Omit<CreateRFProfileInput, "id_usuario">>;
@@ -82,10 +78,6 @@ export interface RFProfileListItem {
     altura_dispositivo_m: number | null;
     capacidade_max_equipamentos: number | null;
     atenuacao_adicional_db: number | null;
-    considera_relevo: boolean;
-    considera_vegetacao: boolean;
-    considera_edificacoes: boolean;
-    considera_antenas: boolean;
     criado_em: string;
     atualizado_em: string | null;
 }

@@ -37,10 +37,6 @@ export class RFService {
       altura_dispositivo_m: input.altura_dispositivo_m ?? null,
       capacidade_max_equipamentos: input.capacidade_max_equipamentos ?? null,
       atenuacao_adicional_db: input.atenuacao_adicional_db ?? null,
-      considera_relevo: input.considera_relevo ?? true,
-      considera_vegetacao: input.considera_vegetacao ?? true,
-      considera_edificacoes: input.considera_edificacoes ?? true,
-      considera_antenas: input.considera_antenas ?? true,
     };
     const { rows } = await pool.query(createRFProfileQuery, [JSON.stringify(profile)]);
     return this.mapLocalProfile(rows[0]);
@@ -84,10 +80,6 @@ export class RFService {
         altura_dispositivo_m: row.altura_dispositivo_m == null ? null : Number(row.altura_dispositivo_m),
         capacidade_max_equipamentos: row.capacidade_max_equipamentos == null ? null : Number(row.capacidade_max_equipamentos),
         atenuacao_adicional_db: row.atenuacao_adicional_db == null ? null : Number(row.atenuacao_adicional_db),
-        considera_relevo: Boolean(row.considera_relevo),
-        considera_vegetacao: Boolean(row.considera_vegetacao),
-        considera_edificacoes: Boolean(row.considera_edificacoes),
-        considera_antenas: Boolean(row.considera_antenas),
         criado_em: row.criado_em instanceof Date ? row.criado_em.toISOString() : row.criado_em,
         atualizado_em: row.atualizado_em instanceof Date ? row.atualizado_em.toISOString() : row.atualizado_em,
     };
@@ -101,34 +93,34 @@ export class RFService {
       "Usuário",
     );
 
-    const perfil = {
-      id_usuario: rfData.id_usuario,
-      nome: rfData.nome.trim(),
-      modelo_gateway: rfData.modelo_gateway ?? null,
-      frequencia_mhz: rfData.frequencia_mhz,
-      potencia_transmissao_dbm: rfData.potencia_transmissao_dbm,
-      sensibilidade_recepcao_dbm: rfData.sensibilidade_recepcao_dbm,
-      alcance_estimado_m: rfData.alcance_estimado_m ?? null,
-      altura_gateway_m: rfData.altura_gateway_m ?? null,
-      altura_dispositivo_m: rfData.altura_dispositivo_m ?? null,
-      capacidade_max_equipamentos: rfData.capacidade_max_equipamentos ?? null,
-      quantidade_canais: rfData.quantidade_canais ?? null,
-      limite_mensagens_transmissoes:
-        rfData.limite_mensagens_transmissoes ?? null,
-      periodo_limite_mensagens: rfData.periodo_limite_mensagens ?? null,
-      custo_estimado_gateway: rfData.custo_estimado_gateway ?? null,
-      caracteristicas_antena: rfData.caracteristicas_antena ?? null,
-      considera_relevo: rfData.considera_relevo ?? true,
-      considera_vegetacao: rfData.considera_vegetacao ?? true,
-      considera_edificacoes: rfData.considera_edificacoes ?? true,
-      considera_obstaculos: rfData.considera_obstaculos ?? true,
-      parametros_adicionais: rfData.parametros_adicionais ?? null,
-    };
+    const perfil = [
+      rfData.id_usuario,
+      rfData.nome.trim(),
+      rfData.modelo_gateway ?? null,
+      rfData.frequencia_mhz,
+      rfData.potencia_transmissao_dbm,
+      rfData.sensibilidade_recepcao_dbm,
+      rfData.alcance_estimado_m ?? null,
+      rfData.altura_gateway_m ?? null,
+      rfData.altura_dispositivo_m ?? null,
+      rfData.capacidade_max_equipamentos ?? null,
+      rfData.quantidade_canais ?? null,
+      rfData.limite_mensagens_transmissoes ?? null,
+      rfData.periodo_limite_mensagens ?? null,
+      rfData.custo_estimado_gateway ?? null,
+      rfData.caracteristicas_antena ?? null,
+      rfData.parametros_adicionais ?? null,
+    ];
 
-    const { data, error } = await supabase.from("perfis_rf")
-    .insert(perfil).select().single();
+    const query = `
+      INSERT INTO perfis_rf
+      (id_usuario, nome, modelo_gateway, frequencia_mhz, potencia_transmissao_dbm, sensibilidade_recepcao_dbm, alcance_estimado_m, altura_gateway_m, altura_dispositivo_m, capacidade_max_equipamentos, quantidade_canais, limite_mensagens_transmissoes, periodo_limite_mensagens, custo_estimado_gateway, caracteristicas_antena, parametros_adicionais)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *;
+    `;
 
-    if (error) throw new Error(`Erro ao criar perfil de RF: ${error.message}`);
-    return data as PerfilRf;
+    const result = await pool.query(query, perfil);
+
+    if (!result.rows[0]) throw new Error("Erro ao criar perfil de RF.");
+    return result.rows[0] as PerfilRf;
   }
 }

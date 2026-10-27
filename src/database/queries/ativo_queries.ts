@@ -1,12 +1,4 @@
-import type { AssetFilters, AssetType } from "../../modules/repository/ActiveRepository.js";
-
-function tipUnidExpression(alias: string): string {
-    return `CASE
-        WHEN ${alias}.atributos->>'tip_unid' ~ '^[0-9]+$'
-        THEN (${alias}.atributos->>'tip_unid')::integer
-        ELSE NULL
-    END`;
-}
+import type { AssetFilters, AssetType } from "../../interface/active-repository.js";
 
 function tipoExpression(tipoAtivo: string, tipId: string): string {
     return `CASE
@@ -29,40 +21,94 @@ function tipoExpression(tipoAtivo: string, tipId: string): string {
     END`;
 }
 
-const assetSelect = `
+const assetCte = `
     WITH base AS (
         SELECT
-            CONCAT(
-                a.tipo_ativo,
-                ':',
-                COALESCE(a.cod_id, a.id_ativo::text)
-            ) AS id,
-            a.id_ativo,
+            'POSTE'::text AS tipo_ativo,
+            a.id_poste AS id_ativo,
             a.cod_id,
-            a.tipo_ativo,
-            ${tipUnidExpression("a")} AS tip_id,
-            a.latitude,
-            a.longitude,
-            COALESCE(m.nome, a.municipio) AS municipio,
-            a.bairro,
-            a.distribuidora,
-            a.atributos
-        FROM ativos_rede a
-        LEFT JOIN municipios m
-            ON m.codigo_ibge::text = a.municipio
+            NULL::integer AS tip_id,
+            pos.municipio,
+            pos.bairro,
+            pos.latitude,
+            pos.longitude,
+            pos.id_distribuidora,
+            pos.registro_atual,
+            jsonb_build_object(
+                'altura', a.altura,
+                'material', a.material,
+                'esforco', a.esforco
+            ) AS atributos
+        FROM POSTES a
+        JOIN POSICOES_GEOGRAFICAS pos
+            ON pos.id_posicao = a.id_posicao
         WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
+
+        UNION ALL
+
+        SELECT
+            'SUBESTACAO'::text AS tipo_ativo,
+            a.id_subestacao AS id_ativo,
+            a.cod_id,
+            NULL::integer AS tip_id,
+            pos.municipio,
+            pos.bairro,
+            pos.latitude,
+            pos.longitude,
+            pos.id_distribuidora,
+            pos.registro_atual,
+            jsonb_build_object('nome', a.nome) AS atributos
+        FROM SUBESTACOES a
+        JOIN POSICOES_GEOGRAFICAS pos
+            ON pos.id_posicao = a.id_posicao
+        WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
+
+        UNION ALL
+
+        SELECT
+            'DISPOSITIVO'::text AS tipo_ativo,
+            a.id_dispositivo AS id_ativo,
+            a.cod_id,
+            a.id_tipo_dispositivo AS tip_id,
+            pos.municipio,
+            pos.bairro,
+            pos.latitude,
+            pos.longitude,
+            pos.id_distribuidora,
+            pos.registro_atual,
+            jsonb_build_object(
+                'subestacao', a.subestacao,
+                'codigo_conjunto_aneel', a.codigo_conjunto_aneel
+            ) AS atributos
+        FROM DISPOSITIVOS a
+        JOIN POSICOES_GEOGRAFICAS pos
+            ON pos.id_posicao = a.id_posicao
+        WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
     ),
     ativos AS (
         SELECT
-            b.id,
+            CONCAT(
+                b.tipo_ativo,
+                ':',
+                COALESCE(b.cod_id, b.id_ativo::text)
+            ) AS id,
             b.id_ativo,
             b.cod_id,
             ${tipoExpression("b.tipo_ativo", "b.tip_id")} AS tipo,
             b.latitude,
             b.longitude,
-            b.municipio,
+            COALESCE(m.nome, b.municipio) AS municipio,
             b.bairro,
-            b.distribuidora,
+            d.nome AS distribuidora,
             b.tip_id AS tipo_dispositivo_id,
             td.nome_dispositivo AS tipo_dispositivo_nome,
             td.categoria AS tipo_dispositivo_categoria,
@@ -74,112 +120,54 @@ const assetSelect = `
                 )
             END AS atributos
         FROM base b
+        LEFT JOIN municipios m
+            ON m.codigo_ibge::text = b.municipio
+        LEFT JOIN distribuidoras d
+            ON d.id = b.id_distribuidora
         LEFT JOIN tipos_dispositivos td
             ON td.id_tipo_dispositivo = b.tip_id
     )
-    SELECT
-        id,
-        id_ativo,
-        cod_id,
-        tipo,
-        latitude,
-        longitude,
-        municipio,
-        bairro,
-        distribuidora,
-        tipo_dispositivo_id,
-        tipo_dispositivo_nome,
-        tipo_dispositivo_categoria,
-        atributos
-    FROM ativos
 `;
 
 export function findAssetsQuery(filters: AssetFilters) {
     const values: unknown[] = [
-        filters.minLatitude,
-        filters.maxLatitude,
         filters.minLongitude,
+        filters.minLatitude,
         filters.maxLongitude,
+        filters.maxLatitude,
     ];
 
     const conditions = [
-        `latitude BETWEEN $1 AND $2`,
-        `longitude BETWEEN $3 AND $4`,
+        `latitude BETWEEN $2 AND $4`,
+        `longitude BETWEEN $1 AND $3`,
     ];
-
-    let distributorCondition = "";
-    let keyConditions = "";
-    let rawConditions = "";
-    let municipioJoin = "";
 
     if (filters.distributors && filters.distributors.length > 0) {
         values.push(filters.distributors);
-
-        const param = `$${values.length}`;
-
-        distributorCondition = ` AND distribuidora = ANY(${param}::text[])`;
-
-        conditions.push(
-            `distribuidora = ANY(${param}::text[])`
-        );
+        conditions.push(`distribuidora = ANY($${values.length}::text[])`);
     }
 
     const municipio = filters.municipio?.trim();
-
     if (municipio) {
         values.push(municipio);
-
-        const param = `$${values.length}`;
-
-        municipioJoin = `
-            LEFT JOIN municipios m
-                ON m.codigo_ibge::text = a.municipio
-        `;
-
-        rawConditions += `
-            AND COALESCE(m.nome, a.municipio) = ${param}
-        `;
-
-        conditions.push(`municipio = ${param}`);
+        conditions.push(`municipio = $${values.length}`);
     }
 
     const bairro = filters.bairro?.trim();
-
     if (bairro) {
         values.push(bairro);
-
-        const param = `$${values.length}`;
-
-        rawConditions += ` AND a.bairro = ${param}`;
-
-        conditions.push(`bairro = ${param}`);
+        conditions.push(`bairro = $${values.length}`);
     }
 
     if (filters.types && filters.types.length > 0) {
         values.push(filters.types);
-
-        const param = `$${values.length}`;
-
-        keyConditions += `
-            AND tipo = ANY(${param}::text[])
-        `;
-
-        conditions.push(
-            `tipo = ANY(${param}::text[])`
-        );
+        conditions.push(`tipo = ANY($${values.length}::text[])`);
     }
 
     if (filters.deviceTypeIds && filters.deviceTypeIds.length > 0) {
         values.push(filters.deviceTypeIds);
-
-        const param = `$${values.length}`;
-
-        keyConditions += `
-            AND tip_id = ANY(${param}::integer[])
-        `;
-
         conditions.push(
-            `tipo_dispositivo_id = ANY(${param}::integer[])`
+            `tipo_dispositivo_id = ANY($${values.length}::integer[])`,
         );
     }
 
@@ -227,49 +215,29 @@ export function findAssetsQuery(filters: AssetFilters) {
     );
 
     const text = `
-        WITH keys AS MATERIALIZED (
-            SELECT
-                id_ativo,
-                tipo,
-                tip_id
-            FROM (
-                SELECT
-                    id_ativo,
-                    tip_id,
-                    ${tipoExpression("tipo_ativo", "tip_id")} AS tipo
-                FROM (
-                    SELECT
-                        a.id_ativo,
-                        a.tipo_ativo,
-                        ${tipUnidExpression("a")} AS tip_id
-                    FROM ativos_rede a
-                    ${municipioJoin}
-                    WHERE a.registro_atual = TRUE
-                      AND a.latitude BETWEEN $1 AND $2
-                      AND a.longitude BETWEEN $3 AND $4
-                      ${distributorCondition}
-                      ${rawConditions}
-                ) raw
-            ) typed
-            WHERE TRUE
-                ${keyConditions}
+        ${assetCte},
+        filtrados AS MATERIALIZED (
+            SELECT *
+            FROM ativos
+            WHERE ${conditions.join(" AND ")}
+        ),
+        keys AS (
+            SELECT id_ativo, tipo
+            FROM filtrados
         ),
         tops AS (
             ${branches.join("\n            UNION ALL\n            ")}
         )
         SELECT
-            pagina.*,
+            filtrados.*,
             (SELECT COUNT(*)::int FROM keys) AS total
-        FROM (
-            ${assetSelect}
-            WHERE ${conditions.join(" AND ")}
-              AND id_ativo IN (
-                  SELECT id_ativo
-                  FROM tops
-              )
-            ORDER BY tipo, id
-            LIMIT ${limitParam}
-        ) pagina
+        FROM filtrados
+        WHERE id_ativo IN (
+            SELECT id_ativo
+            FROM tops
+        )
+        ORDER BY tipo, id
+        LIMIT ${limitParam}
     `;
 
     return {
@@ -289,22 +257,25 @@ export const findDeviceTypesQuery = `
 
 export const findDistributorsQuery = `
     SELECT
-        distribuidora AS nome,
-        AVG(latitude) AS latitude,
-        AVG(longitude) AS longitude,
-        COUNT(*) AS total_ativos
-    FROM ativos_rede
-    WHERE registro_atual = TRUE
-      AND distribuidora IS NOT NULL
-      AND distribuidora <> ''
-    GROUP BY distribuidora
-    ORDER BY distribuidora
+        d.nome,
+        AVG(pos.latitude) AS latitude,
+        AVG(pos.longitude) AS longitude,
+        COUNT(*)::int AS total_ativos
+    FROM posicoes_geograficas pos
+    JOIN distribuidoras d
+        ON d.id = pos.id_distribuidora
+    WHERE pos.registro_atual = TRUE
+      AND pos.tipo_posicao IN ('POSTE', 'SUBESTACAO', 'DISPOSITIVO')
+    GROUP BY d.id, d.nome
+    ORDER BY d.nome
 `;
 
 export function findAssetByIdQuery(id: string) {
     return {
         text: `
-            ${assetSelect}
+            ${assetCte}
+            SELECT *
+            FROM ativos
             WHERE (id = $1 OR cod_id = $1)
             LIMIT 1
         `,

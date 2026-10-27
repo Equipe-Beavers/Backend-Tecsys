@@ -30,8 +30,11 @@ export class RecommendationController {
 
              return reply.status(201).send(data);
         } catch (error: any) {
-            return reply.status(400).send({
-                message: error.message || "Erro inesperado ao gerar recomendação."
+            const message = error instanceof Error ? error.message : "Erro inesperado ao gerar recomendação.";
+            const missingPoints = message.includes("não possui pontos marcados");
+            return reply.status(missingPoints ? 422 : 400).send({
+                code: missingPoints ? "STUDY_POINTS_REQUIRED" : "RECOMMENDATION_ERROR",
+                message
             })
         }
     }
