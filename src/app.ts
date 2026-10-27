@@ -91,7 +91,19 @@ export class App {
         status: { type: "string", enum: ["AGUARDANDO_SELECAO", "DEFINITIVO", "CRIANDO_CENARIO", "CENARIO_EM_RASCUNHO", "EM_COMPARACAO"] },
       },
     } };
-
+    this.app.get("/estudos", { schema: { querystring: {
+      type: "object", additionalProperties: false,
+      properties: { id_usuario: studyId },
+    } } }, async (request, reply) => {
+      return studyController.ListStudies(
+        request as Parameters<StudyController["ListStudies"]>[0], reply,
+      );
+    });
+    this.app.post("/estudos", { schema: studySchema }, async (request, reply) => {
+      return studyController.CreateStudy(
+        request as Parameters<StudyController["CreateStudy"]>[0], reply,
+      );
+    });
     this.app.post("/create-study", { schema: studySchema }, async (request, reply) => {
       await studyController.CreateStudy(
         request as Parameters<StudyController["CreateStudy"]>[0],
@@ -103,23 +115,40 @@ export class App {
       type: "object", required: ["id"], additionalProperties: false,
       properties: { id: studyId },
     };
-
-    this.app.get("/study/:id", { schema: { params: studyParams } }, async (request, reply) => {
+    this.app.get("/estudos/:id", { schema: { params: studyParams } }, async (request, reply) => {
       return studyController.GetStudy(request as Parameters<StudyController["GetStudy"]>[0], reply);
     });
+    this.app.patch("/estudos/:id", { schema: { params: studyParams, body: {
+      type: "object", minProperties: 1, additionalProperties: false,
+      properties: {
+        nome: studySchema.body.properties.nome,
+        descricao: studySchema.body.properties.descricao,
+        uf: studySchema.body.properties.uf,
+        municipio: studySchema.body.properties.municipio,
+        bairro: studySchema.body.properties.bairro,
+        id_perfil_rf: studyId,
+        id_criterio_instalacao: studyId,
+      },
+    } } }, async (request, reply) => {
+      return studyController.UpdateStudy(request as Parameters<StudyController["UpdateStudy"]>[0], reply);
+    });
+    this.app.delete("/estudos/:id", { schema: { params: studyParams } }, async (request, reply) => {
+      return studyController.DeleteStudy(request as Parameters<StudyController["DeleteStudy"]>[0], reply);
+    });
 
-
-    this.app.get("/studies", async (request, reply) => {
+    // Compatibilidade com o fluxo da SCRUM-54 enquanto os clientes migram
+    // para as rotas REST em /estudos.
+    this.app.get("/study", async (request, reply) => {
       return studyController.ListStudies(
         request as Parameters<StudyController["ListStudies"]>[0], reply,
       );
     });
-    this.app.patch("/update-study/:id", async (request, reply) => {
+    this.app.patch("/study/:id", async (request, reply) => {
       return studyController.UpdateStudy(
         request as Parameters<StudyController["UpdateStudy"]>[0], reply,
       );
     });
-    this.app.delete("/delete-study/:id", async (request, reply) => {
+    this.app.delete("/study/:id", async (request, reply) => {
       return studyController.DeleteStudy(
         request as Parameters<StudyController["DeleteStudy"]>[0], reply,
       );
@@ -425,6 +454,8 @@ export class App {
       );
     });
 
+    // Rotas sem prefixo mantidas para o frontend da SCRUM-54. As rotas
+    // equivalentes em /api continuam registradas acima para a develop.
     this.app.get("/distribuidoras", async (request, reply) => {
       return regionsController.ListDistributor(
         request as Parameters<RegionsController["ListDistributor"]>[0], reply,
