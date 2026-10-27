@@ -18,7 +18,6 @@ export class App {
   public app: fastify.FastifyInstance;
   constructor() {
     this.app = fastify({ logger: true, ajv: { customOptions: { removeAdditional: false } } });
-    // Flutter Web development origin; deployments can provide an explicit list.
     void this.app.register(cors, {
       origin: process.env.CORS_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean)
         ?? /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
