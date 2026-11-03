@@ -783,6 +783,20 @@ ALTER TABLE ONLY public.usuarios
 ALTER TABLE ONLY public.usuarios
     ADD CONSTRAINT usuarios_username_key UNIQUE (username);
 
+CREATE UNIQUE INDEX usuarios_email_normalizado_key ON public.usuarios (lower(btrim(email)));
+CREATE UNIQUE INDEX usuarios_username_normalizado_key ON public.usuarios (lower(btrim(username)));
+
+CREATE TABLE public.sessoes_usuario (
+  jti UUID PRIMARY KEY,
+  id_usuario BIGINT NOT NULL REFERENCES public.usuarios (id_usuario) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expira_em TIMESTAMPTZ NOT NULL,
+  revogada_em TIMESTAMPTZ,
+  CONSTRAINT sessoes_usuario_expiracao_check CHECK (expira_em > criado_em)
+);
+CREATE INDEX sessoes_usuario_usuario_idx ON public.sessoes_usuario (id_usuario);
+CREATE INDEX sessoes_usuario_expiracao_idx ON public.sessoes_usuario (expira_em);
+
 
 --
 -- Name: idx_dispositivos_cod_id; Type: INDEX; Schema: public; Owner: -

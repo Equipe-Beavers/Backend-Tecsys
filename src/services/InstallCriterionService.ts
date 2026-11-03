@@ -31,19 +31,19 @@ export class InstallCriterionService {
     return { data: rows.map((row) => this.utils.MapRow(row)), page, limit };
   }
 
-  async getInstallCriterion(id: number): Promise<InstallCriterionDTO> {
-    const { rows } = await pool.query(getInstallCriterionQuery, [id]);
+  async getInstallCriterion(id: number, userId: number): Promise<InstallCriterionDTO> {
+    const { rows } = await pool.query(getInstallCriterionQuery, [id, userId]);
     if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
     return this.utils.MapRow(rows[0]);
   }
 
-  async updateInstallCriterion(id: number, input: Partial<CreateInstallCriterionDTO>): Promise<InstallCriterionDTO> {
+  async updateInstallCriterion(id: number, input: Partial<CreateInstallCriterionDTO>, userId: number): Promise<InstallCriterionDTO> {
     try {
       this.validation.Validate(input);
       if (Object.hasOwn(input, "tipos_elementos_permitidos") || Object.hasOwn(input, "tipos_elementos_proibidos")) {
-        return await this.updateAssetSelections(id, input);
+        return await this.updateAssetSelections(id, input, userId);
       }
-      const { rows } = await pool.query(updateInstallCriterionQuery, [id, this.utils.PrepareData(input)]);
+      const { rows } = await pool.query(updateInstallCriterionQuery, [id, this.utils.PrepareData(input), userId]);
       if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
       return this.utils.MapRow(rows[0]);
     } catch (error) {
@@ -51,14 +51,14 @@ export class InstallCriterionService {
     }
   }
 
-  private async updateAssetSelections(id: number, input: Partial<CreateInstallCriterionDTO>): Promise<InstallCriterionDTO> {
+  private async updateAssetSelections(id: number, input: Partial<CreateInstallCriterionDTO>, userId: number): Promise<InstallCriterionDTO> {
     const client = await pool.connect();
     try {
       await client.query(beginCriterionTransactionQuery);
-      const existing = await client.query(lockInstallCriterionQuery, [id]);
+      const existing = await client.query(lockInstallCriterionQuery, [id, userId]);
       if (!existing.rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
       this.validation.Validate({ ...existing.rows[0], ...input });
-      const { rows } = await client.query(updateInstallCriterionQuery, [id, this.utils.PrepareData(input)]);
+      const { rows } = await client.query(updateInstallCriterionQuery, [id, this.utils.PrepareData(input), userId]);
       const result = this.utils.MapRow(rows[0]);
       await client.query(commitCriterionTransactionQuery);
       return result;
@@ -70,9 +70,9 @@ export class InstallCriterionService {
     }
   }
 
-  async deleteInstallCriterion(id: number): Promise<void> {
+  async deleteInstallCriterion(id: number, userId: number): Promise<void> {
     try {
-      const { rows } = await pool.query(deleteInstallCriterionQuery, [id]);
+      const { rows } = await pool.query(deleteInstallCriterionQuery, [id, userId]);
       if (!rows[0]) throw new InstallCriterionError(404, "Critério de instalação não encontrado.");
     } catch (error) {
       this.utils.RethrowDatabaseError(error, true);

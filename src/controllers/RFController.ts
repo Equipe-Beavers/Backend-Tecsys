@@ -22,7 +22,7 @@ export class RFController {
 
     async ListRFProfiles(request: FastifyRequest<{ Querystring: RFProfileListQuery }>, reply: FastifyReply) {
         try {
-            const data = await this.rfService.listRFProfiles(request.query);
+            const data = await this.rfService.listRFProfiles({ ...request.query, id_usuario: Number(request.user.sub) });
             return reply.status(200).send(data);
         } catch (error) {
             request.log.error({ err: error }, "RF profile list failed");
@@ -48,7 +48,7 @@ export class RFController {
 
     async GetLocalRFProfile(request: FastifyRequest<{ Params: { id: number } }>, reply: FastifyReply) {
         try {
-            const data = await this.rfService.getLocalRFProfile(request.params.id);
+            const data = await this.rfService.getLocalRFProfile(request.params.id, Number(request.user.sub));
             if (!data) return reply.status(404).send({ message: "Perfil de RF não encontrado." });
             return reply.status(200).send({ data });
         } catch (error) {
@@ -62,7 +62,7 @@ export class RFController {
         reply: FastifyReply,
     ) {
         try {
-            const data = await this.rfService.updateLocalRFProfile(request.params.id, request.body);
+            const data = await this.rfService.updateLocalRFProfile(request.params.id, request.body, Number(request.user.sub));
             if (!data) return reply.status(404).send({ message: "Perfil de RF não encontrado." });
             return reply.status(200).send({ message: "Perfil de RF atualizado com sucesso!", data });
         } catch (error) {
@@ -73,7 +73,7 @@ export class RFController {
 
     async DeleteLocalRFProfile(request: FastifyRequest<{ Params: { id: number } }>, reply: FastifyReply) {
         try {
-            const deleted = await this.rfService.deleteLocalRFProfile(request.params.id);
+            const deleted = await this.rfService.deleteLocalRFProfile(request.params.id, Number(request.user.sub));
             if (!deleted) return reply.status(404).send({ message: "Perfil de RF não encontrado." });
             return reply.status(204).send();
         } catch (error) {

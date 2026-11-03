@@ -194,10 +194,10 @@ export class PropagationService {
         };
     }
 
-    async generateCoverage(input: GenerateCoverageDTO): Promise<Coverage> {
+    async generateCoverage(input: GenerateCoverageDTO, userId: number): Promise<Coverage> {
         const { rows } = await pool.query(
-            "SELECT * FROM perfis_rf WHERE id_perfil_rf = $1",
-            [input.id_perfil_rf],
+            "SELECT * FROM perfis_rf WHERE id_perfil_rf = $1 AND id_usuario = $2",
+            [input.id_perfil_rf, userId],
         );
         const profile = rows[0];
         if (!profile) throw new Error("Perfil de RF não encontrado.");
@@ -226,11 +226,11 @@ export class PropagationService {
         const result = await pool.query(updateScenarioCoverageQuery, [idScenario]);
         return result.rows[0]?.mancha_consolidada ?? null;
     }
-    async getScenarioCoverage(idScenario: number): Promise<ScenarioCoverage> {
-        const scenario = await pool.query(findScenarioCoverageQuery, [idScenario]);
+    async getScenarioCoverage(idScenario: number, userId: number): Promise<ScenarioCoverage> {
+        const scenario = await pool.query(findScenarioCoverageQuery, [idScenario, userId]);
         if (scenario.rows.length === 0) throw new Error("Cenário não encontrado.");
 
-        const gateways = await pool.query(findScenarioGatewaysCoverageQuery, [idScenario]);
+        const gateways = await pool.query(findScenarioGatewaysCoverageQuery, [idScenario, userId]);
 
         return {
             id_cenario: idScenario,

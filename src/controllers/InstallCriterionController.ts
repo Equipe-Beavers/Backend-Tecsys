@@ -29,7 +29,7 @@ export class InstallCriterionController {
 
   async ListInstallCriteria(request: FastifyRequest<{ Querystring: ListInstallCriteriaDTO }>, reply: FastifyReply) {
     try {
-      return reply.status(200).send(await this.installCriterionService.listInstallCriteria(request.query));
+      return reply.status(200).send(await this.installCriterionService.listInstallCriteria({ ...request.query, id_usuario: Number(request.user.sub) }));
     } catch (error) {
       return this.HandleError(error, request, reply);
     }
@@ -37,7 +37,7 @@ export class InstallCriterionController {
 
   async GetInstallCriterion(request: FastifyRequest<{ Params: { id: number } }>, reply: FastifyReply) {
     try {
-      const data = await this.installCriterionService.getInstallCriterion(request.params.id);
+      const data = await this.installCriterionService.getInstallCriterion(request.params.id, Number(request.user.sub));
       return reply.status(200).send({ data });
     } catch (error) {
       return this.HandleError(error, request, reply);
@@ -46,7 +46,7 @@ export class InstallCriterionController {
 
   async UpdateInstallCriterion(request: FastifyRequest<{ Params: { id: number }; Body: Partial<CreateInstallCriterionDTO> }>, reply: FastifyReply) {
     try {
-      const data = await this.installCriterionService.updateInstallCriterion(request.params.id, request.body);
+      const data = await this.installCriterionService.updateInstallCriterion(request.params.id, request.body, Number(request.user.sub));
       return reply.status(200).send({ message: "Critério de instalação atualizado com sucesso!", data });
     } catch (error) {
       return this.HandleError(error, request, reply);
@@ -55,7 +55,7 @@ export class InstallCriterionController {
 
   async DeleteInstallCriterion(request: FastifyRequest<{ Params: { id: number } }>, reply: FastifyReply) {
     try {
-      await this.installCriterionService.deleteInstallCriterion(request.params.id);
+      await this.installCriterionService.deleteInstallCriterion(request.params.id, Number(request.user.sub));
       return reply.status(204).send();
     } catch (error) {
       return this.HandleError(error, request, reply);

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app.js";
+import { createTestApp } from "./helpers/create-test-app.js";
 
 import {
   createInstallCriterionQuery, listInstallCriteriaQuery, getInstallCriterionQuery,
@@ -33,7 +34,7 @@ describe("InstallCriterionController CRUD", () => {
 
   beforeEach(() => {
     database.query.mockReset();
-    app = new App().getInstance();
+    app = createTestApp();
     app.log.level = "silent";
   });
   afterEach(async () => { await app.close(); });
@@ -89,11 +90,10 @@ describe("InstallCriterionController CRUD", () => {
     expect(database.query).not.toHaveBeenCalled();
   });
 
-  it("rejects a nonexistent user through the foreign key", async () => {
-    new DatabaseResult(null, { code: "23503" });
+  it("rejects a user different from the authenticated identity", async () => {
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload: { id_usuario: 99, nome: "Postes" } });
-    expect(response.statusCode).toBe(400);
-    expect(database.query).toHaveBeenCalledTimes(1);
+    expect(response.statusCode).toBe(403);
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it("lists with user filter and deterministic pagination", async () => {
@@ -274,7 +274,7 @@ describe("InstallCriterionController CRUD", () => {
       atenuacao_adicional_db: 4.2,
       criado_em: "2026-10-12T10:00:00.000Z",
     });
-    expect(database.query).toHaveBeenCalledWith(getRFProfileQuery, [12]);
+    expect(database.query).toHaveBeenCalledWith(getRFProfileQuery, [12, 1]);
   });
 
   it("returns 404 when an RF profile does not exist", async () => {
@@ -302,7 +302,7 @@ describe("InstallCriterionController CRUD", () => {
     expect(response.json().data.nome).toBe("GW revisado");
     expect(database.query).toHaveBeenCalledWith(
       updateRFProfileQuery,
-      [12, JSON.stringify({ nome: "GW revisado" })],
+      [12, JSON.stringify({ nome: "GW revisado" }), 1],
     );
   });
 
@@ -330,7 +330,7 @@ describe("InstallCriterionController CRUD", () => {
     });
     expect(response.statusCode).toBe(204);
     expect(response.body).toBe("");
-    expect(database.query).toHaveBeenCalledWith(deleteRFProfileQuery, [8]);
+    expect(database.query).toHaveBeenCalledWith(deleteRFProfileQuery, [8, 1]);
   });
 
   it("returns 404 when deleting a missing RF profile", async () => {
@@ -363,7 +363,7 @@ describe("InstallCriterionController CRUD", () => {
     const response = await app.inject("/get-install-criterion/7");
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ data: criterion });
-    expect(database.query).toHaveBeenCalledWith(getInstallCriterionQuery, [7]);
+    expect(database.query).toHaveBeenCalledWith(getInstallCriterionQuery, [7, 1]);
   });
 
   it("normalizes PostgreSQL BIGINT, NUMERIC and timestamp values for the frontend", async () => {
@@ -387,15 +387,14 @@ describe("InstallCriterionController CRUD", () => {
     new DatabaseResult({ ...criterion, nome: "Torres", limite_gateways: null, relevo: { altitude_minima_m: 80 } });
     const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload: { nome: " Torres ", limite_gateways: null, relevo: { altitude_minima_m: 80 } } });
     expect(response.statusCode).toBe(200);
-    expect(database.query).toHaveBeenCalledWith(updateInstallCriterionQuery, [7, JSON.stringify({ nome: "Torres", limite_gateways: null, relevo: { altitude_minima_m: 80 } })]);
+    expect(database.query).toHaveBeenCalledWith(updateInstallCriterionQuery, [7, JSON.stringify({ nome: "Torres", limite_gateways: null, relevo: { altitude_minima_m: 80 } }), 1]);
     expect(database.query).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a replacement user through the foreign key", async () => {
-    new DatabaseResult(null, { code: "23503" });
+  it("rejects ownership changes before accessing the database", async () => {
     const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload: { id_usuario: 99 } });
     expect(response.statusCode).toBe(400);
-    expect(database.query).toHaveBeenCalledTimes(1);
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it.each([{}, { nome: null }, { nome: " " }, { id_usuario: null }, { id_criterio_instalacao: 10 }, { atualizado_em: "2020-01-01" }])("rejects invalid patch: %j", async (payload) => {
@@ -416,7 +415,7 @@ describe("InstallCriterionController CRUD", () => {
     const response = await app.inject({ method: "DELETE", url: "/delete-install-criterion/7" });
     expect(response.statusCode).toBe(204);
     expect(response.body).toBe("");
-    expect(database.query).toHaveBeenCalledWith(deleteInstallCriterionQuery, [7]);
+    expect(database.query).toHaveBeenCalledWith(deleteInstallCriterionQuery, [7, 1]);
   });
 
   it("returns conflict when a study references the criterion", async () => {

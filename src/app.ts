@@ -1,6 +1,8 @@
 import fastify from "fastify";
 import cors from "@fastify/cors";
-import { UserController } from "./controllers/UserController.js";
+import jwt from "@fastify/jwt";
+import { authRoutes, jwtConfiguration } from "./modules/auth.routes.js";
+import { registerResourceProtection } from "./modules/resource-protection.js";
 import { StudyController } from "./controllers/StudyController.js";
 import { BuildingController } from "./controllers/BuildingController.js";
 import { PropagationController } from "./controllers/PropagationController.js";
@@ -16,8 +18,9 @@ import { vegetacaoRoutes } from "./modules/vegetacao.routes.js";
 
 export class App {
   public app: fastify.FastifyInstance;
-  constructor() {
-    this.app = fastify({ logger: true, ajv: { customOptions: { removeAdditional: false } } });
+  constructor(options: { authSecret?: string } = {}) {
+    this.app = fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.senha"] }, ajv: { customOptions: { removeAdditional: false } } });
+    registerResourceProtection(this.app);
     void this.app.register(cors, {
       origin: process.env.CORS_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean)
         ?? /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
@@ -28,6 +31,8 @@ export class App {
     void this.app.register(emissoesRfRoutes);
     void this.app.register(regioesRoutes);
     void this.app.register(ativoRoutes);
+    void this.app.register(jwt, jwtConfiguration(options.authSecret ?? process.env.JWT_SECRET));
+    void this.app.register(authRoutes, { secret: options.authSecret ?? process.env.JWT_SECRET });
     this.routes();
   }
 
@@ -46,7 +51,6 @@ export class App {
   }
 
   routes() {
-    const userController = new UserController();
     const studyController = new StudyController();
     const scenarioController = new ScenarioController();
     const installCriterionController = new InstallCriterionController();
@@ -54,13 +58,6 @@ export class App {
     const recommendationController = new RecommendationController();
     const buildingController = new BuildingController();
     const propagationController = new PropagationController();
-
-    this.app.post("/create-user", async (request, reply) => {
-      await userController.CreateUser(
-        request as Parameters<UserController["CreateUser"]>[0],
-        reply,
-      );
-    });
 
     // ROTAS DE ESTUDO E RECOMENDAÇÃO
     const studyId = { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
@@ -480,24 +477,6 @@ export class App {
     };
 
     // ROTAS DE CRUD/VALIDAÇÃO UTILIZADAS PELOS TESTES
-    this.app.post("/usuarios", async (request, reply) => {
-      const body = request.body as Record<string, unknown>;
-      const allowed = ["username", "email", "senha_hash"];
-      const missing = allowed.filter((key) => !(key in body));
-      if (missing.length > 0 || Object.keys(body).some((key) => !allowed.includes(key))) {
-        return reply.status(400).send({ code: "FST_ERR_VALIDATION", message: "Dados inválidos" });
-      }
-
-      for (const key of ["username", "email", "senha_hash"]) {
-        const value = body[key];
-        if (typeof value !== "string" || value.trim() === "") {
-          return reply.status(400).send({ code: "FST_ERR_VALIDATION", message: "Dados inválidos" });
-        }
-      }
-
-      return reply.status(201).send({ message: "Usuário criado com sucesso" });
-    });
-
     this.app.post("/estudos/:id/pontos", {
       schema: {
         params: {
@@ -532,7 +511,7 @@ export class App {
           erro: "O estudo da URL deve ser igual ao estudo informado no corpo",
         });
       }
-      return reply.status(201).send({ message: "Ponto do estudo criado com sucesso" });
+      return studyController.CreateStudyPoint(request as Parameters<StudyController["CreateStudyPoint"]>[0], reply);
     });
 
     this.app.post("/cenarios", {
@@ -550,8 +529,8 @@ export class App {
           },
         },
       },
-    }, async (_request, reply) => {
-      return reply.status(201).send({ message: "Cenário criado com sucesso" });
+    }, async (request, reply) => {
+      return scenarioController.CreateScneario(request as Parameters<ScenarioController["CreateScneario"]>[0], reply);
     });
 
     this.app.post("/criterios-instalacao", {
@@ -571,7 +550,7 @@ export class App {
       const body = request.body as Record<string, unknown>;
       const validation = validateNoUnexpectedProperties(body, ["id_usuario", "nome", "tipos_elementos_permitidos"], reply);
       if (validation) return validation;
-      return reply.status(201).send({ message: "Critério de instalação criado com sucesso" });
+      return installCriterionController.CreateInstallCriterion(request as Parameters<InstallCriterionController["CreateInstallCriterion"]>[0], reply);
     });
 
     this.app.post("/cenario-gateways", {
@@ -591,7 +570,7 @@ export class App {
       const body = request.body as Record<string, unknown>;
       const validation = validateNoUnexpectedProperties(body, ["id_cenario", "id_estudo_ponto", "capacidade_utilizada_pct"], reply);
       if (validation) return validation;
-      return reply.status(201).send({ message: "Gateway do cenário criado com sucesso" });
+      return scenarioController.CreateGatewayScenario(request as Parameters<ScenarioController["CreateGatewayScenario"]>[0], reply);
     });
 
     this.app.post("/cenario-atendimentos", {
@@ -611,7 +590,7 @@ export class App {
       const body = request.body as Record<string, unknown>;
       const validation = validateNoUnexpectedProperties(body, ["id_cenario_gateway", "id_estudo_ponto", "distancia_m"], reply);
       if (validation) return validation;
-      return reply.status(201).send({ message: "Atendimento do cenário criado com sucesso" });
+      return scenarioController.CreateServiceScenario(request as Parameters<ScenarioController["CreateServiceScenario"]>[0], reply);
     });
 
     this.app.post("/perfis-rf", {
@@ -637,7 +616,7 @@ export class App {
       if (body.parametros_adicionais !== undefined && body.parametros_adicionais !== null && typeof body.parametros_adicionais !== "object") {
         return reply.status(400).send({ code: "FST_ERR_VALIDATION", message: "parametros_adicionais deve ser um objeto ou nulo" });
       }
-      return reply.status(201).send({ message: "Perfil RF criado com sucesso" });
+      return rfControler.CreateRFProfile(request as Parameters<RFController["CreateRFProfile"]>[0], reply);
     });
 
   }

@@ -17,17 +17,16 @@ export const createInstallCriterionQuery = `
 
 export const listInstallCriteriaQuery = `
   SELECT ${criterionColumns} FROM criterios_instalacao
-  WHERE ($1::bigint IS NULL OR id_usuario = $1::bigint)
+  WHERE id_usuario = $1::bigint
   ORDER BY id_criterio_instalacao
   LIMIT $2 OFFSET $3`;
 
 export const getInstallCriterionQuery = `
   SELECT ${criterionColumns} FROM criterios_instalacao
-  WHERE id_criterio_instalacao = $1`;
+  WHERE id_criterio_instalacao = $1 AND id_usuario = $2`;
 
 export const updateInstallCriterionQuery = `
   UPDATE criterios_instalacao SET
-    id_usuario = CASE WHEN $2::jsonb ? 'id_usuario' THEN ($2::jsonb->>'id_usuario')::bigint ELSE id_usuario END,
     nome = CASE WHEN $2::jsonb ? 'nome' THEN $2::jsonb->>'nome' ELSE nome END,
     tipos_elementos_permitidos = CASE WHEN $2::jsonb ? 'tipos_elementos_permitidos' THEN NULLIF($2::jsonb->'tipos_elementos_permitidos', 'null'::jsonb) ELSE tipos_elementos_permitidos END,
     tipos_elementos_proibidos = CASE WHEN $2::jsonb ? 'tipos_elementos_proibidos' THEN NULLIF($2::jsonb->'tipos_elementos_proibidos', 'null'::jsonb) ELSE tipos_elementos_proibidos END,
@@ -36,11 +35,11 @@ export const updateInstallCriterionQuery = `
     limite_gateways = CASE WHEN $2::jsonb ? 'limite_gateways' THEN ($2::jsonb->>'limite_gateways')::integer ELSE limite_gateways END,
     relevo = CASE WHEN $2::jsonb ? 'relevo' THEN NULLIF($2::jsonb->'relevo', 'null'::jsonb) ELSE relevo END,
     atualizado_em = CURRENT_TIMESTAMP
-  WHERE id_criterio_instalacao = $1
+  WHERE id_criterio_instalacao = $1 AND id_usuario = $3
   RETURNING ${criterionColumns}`;
 
 export const deleteInstallCriterionQuery = `
-  DELETE FROM criterios_instalacao WHERE id_criterio_instalacao = $1
+  DELETE FROM criterios_instalacao WHERE id_criterio_instalacao = $1 AND id_usuario = $2
   RETURNING id_criterio_instalacao`;
 
 export const listRFProfilesQuery = `
@@ -49,7 +48,7 @@ export const listRFProfilesQuery = `
     altura_gateway_m, altura_dispositivo_m, capacidade_max_equipamentos,
     atenuacao_adicional_db, criado_em, atualizado_em
   FROM perfis_rf
-  WHERE ($1::bigint IS NULL OR id_usuario = $1::bigint)
+  WHERE id_usuario = $1::bigint
   ORDER BY id_perfil_rf
   LIMIT $2 OFFSET $3`;
 
@@ -59,7 +58,7 @@ export const getRFProfileQuery = `
     altura_gateway_m, altura_dispositivo_m, capacidade_max_equipamentos,
     atenuacao_adicional_db, criado_em, atualizado_em
   FROM perfis_rf
-  WHERE id_perfil_rf = $1`;
+  WHERE id_perfil_rf = $1 AND id_usuario = $2`;
 
 export const createRFProfileQuery = `
   INSERT INTO perfis_rf (
@@ -86,7 +85,7 @@ export const updateRFProfileQuery = `
     capacidade_max_equipamentos = CASE WHEN $2::jsonb ? 'capacidade_max_equipamentos' THEN ($2::jsonb->>'capacidade_max_equipamentos')::integer ELSE capacidade_max_equipamentos END,
     atenuacao_adicional_db = CASE WHEN $2::jsonb ? 'atenuacao_adicional_db' THEN ($2::jsonb->>'atenuacao_adicional_db')::numeric ELSE atenuacao_adicional_db END,
     atualizado_em = CURRENT_TIMESTAMP
-  WHERE id_perfil_rf = $1
+  WHERE id_perfil_rf = $1 AND id_usuario = $3
   RETURNING id_perfil_rf, id_usuario, nome, frequencia_mhz,
     potencia_transmissao_dbm, sensibilidade_recepcao_dbm,
     altura_gateway_m, altura_dispositivo_m, capacidade_max_equipamentos,
@@ -94,11 +93,11 @@ export const updateRFProfileQuery = `
 
 export const deleteRFProfileQuery = `
   DELETE FROM perfis_rf
-  WHERE id_perfil_rf = $1
+  WHERE id_perfil_rf = $1 AND id_usuario = $2
   RETURNING id_perfil_rf`;
 
 export const lockInstallCriterionQuery = `SELECT tipos_elementos_permitidos, tipos_elementos_proibidos
-  FROM criterios_instalacao WHERE id_criterio_instalacao = $1 FOR UPDATE`;
+  FROM criterios_instalacao WHERE id_criterio_instalacao = $1 AND id_usuario = $2 FOR UPDATE`;
 export const beginCriterionTransactionQuery = 'BEGIN';
 export const commitCriterionTransactionQuery = 'COMMIT';
 export const rollbackCriterionTransactionQuery = 'ROLLBACK';
@@ -135,15 +134,15 @@ export const createStudyQuery = `
 export const listStudiesQuery = `
   SELECT ${studyColumns},
     (SELECT profile.nome FROM perfis_rf AS profile
-      WHERE profile.id_perfil_rf = estudos.id_perfil_rf) AS nome_perfil_rf,
+      WHERE profile.id_perfil_rf = estudos.id_perfil_rf AND profile.id_usuario = estudos.id_usuario) AS nome_perfil_rf,
     (SELECT criterion.nome FROM criterios_instalacao AS criterion
-      WHERE criterion.id_criterio_instalacao = estudos.id_criterio_instalacao) AS nome_criterio_instalacao
+      WHERE criterion.id_criterio_instalacao = estudos.id_criterio_instalacao AND criterion.id_usuario = estudos.id_usuario) AS nome_criterio_instalacao
   FROM estudos
-  WHERE ($1::bigint IS NULL OR id_usuario = $1::bigint)
+  WHERE id_usuario = $1::bigint
   ORDER BY id_estudo DESC`;
 
 export const getStudyQuery = `
-  SELECT ${studyColumns} FROM estudos WHERE id_estudo = $1`;
+  SELECT ${studyColumns} FROM estudos WHERE id_estudo = $1 AND id_usuario = $2`;
 
 export const updateStudyQuery = `
   UPDATE estudos SET
@@ -155,7 +154,7 @@ export const updateStudyQuery = `
     id_perfil_rf = CASE WHEN $2::jsonb ? 'id_perfil_rf' THEN ($2::jsonb->>'id_perfil_rf')::bigint ELSE id_perfil_rf END,
     id_criterio_instalacao = CASE WHEN $2::jsonb ? 'id_criterio_instalacao' THEN ($2::jsonb->>'id_criterio_instalacao')::bigint ELSE id_criterio_instalacao END,
     atualizado_em = CURRENT_TIMESTAMP
-  WHERE id_estudo = $1
+  WHERE id_estudo = $1 AND id_usuario = $3
     AND EXISTS (
       SELECT 1 FROM perfis_rf AS profile
       WHERE profile.id_perfil_rf = COALESCE(($2::jsonb->>'id_perfil_rf')::bigint, estudos.id_perfil_rf)
@@ -169,7 +168,7 @@ export const updateStudyQuery = `
   RETURNING ${studyColumns}`;
 
 export const deleteStudyQuery = `
-  DELETE FROM estudos WHERE id_estudo = $1 RETURNING id_estudo`;
+  DELETE FROM estudos WHERE id_estudo = $1 AND id_usuario = $2 RETURNING id_estudo`;
 
 // SQL da aplicação. Cada consulta é exportada como uma variável.
 
@@ -201,9 +200,9 @@ export const updateScenarioCoverageQuery = `
 
 /** $1 id_cenario. */
 export const findScenarioCoverageQuery = `
-    SELECT ST_AsGeoJSON(mancha_consolidada, 7, 0)::jsonb AS mancha_consolidada
-    FROM cenarios
-    WHERE id_cenario = $1
+    SELECT ST_AsGeoJSON(c.mancha_consolidada, 7, 0)::jsonb AS mancha_consolidada
+    FROM cenarios c JOIN estudos e ON e.id_estudo = c.id_estudo
+    WHERE c.id_cenario = $1 AND e.id_usuario = $2
 `;
 
 /** $1 id_cenario. */
@@ -219,6 +218,9 @@ export const findScenarioGatewaysCoverageQuery = `
         ST_AsGeoJSON(cg.mancha_cobertura, 7, 0)::jsonb AS mancha_cobertura
     FROM cenario_gateways cg
     JOIN estudo_pontos ep ON ep.id_estudo_ponto = cg.id_estudo_ponto
-    WHERE cg.id_cenario = $1
+    JOIN cenarios c ON c.id_cenario = cg.id_cenario
+    JOIN estudos e ON e.id_estudo = c.id_estudo
+    WHERE cg.id_cenario = $1 AND e.id_usuario = $2
+      AND ep.id_estudo = c.id_estudo
     ORDER BY cg.id_cenario_gateway
 `;
