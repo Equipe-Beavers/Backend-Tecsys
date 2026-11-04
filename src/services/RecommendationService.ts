@@ -8,6 +8,7 @@ import type { BuildingsAround } from "./BuildingService.js";
 import type { Coverage } from "../interface/PropagationDTO.js";
 
 export interface GerarRecomendacaoInput {
+  id_usuario: number;
   id_estudo: number;
   id_perfil_rf: number;
   id_criterio_instalacao?: number | null;
@@ -27,15 +28,15 @@ export class RecommendationService {
 
   async generateRecommendation(input: GerarRecomendacaoInput) {
     const studyResult = await pool.query(
-      "SELECT id_estudo FROM estudos WHERE id_estudo = $1",
-      [input.id_estudo]
+      "SELECT id_estudo FROM estudos WHERE id_estudo = $1 AND id_usuario = $2",
+      [input.id_estudo, input.id_usuario]
     );
     const study = studyResult.rows[0];
     if (!study) throw new Error("Estudo não encontrado.");
 
     const rfResult = await pool.query(
-      "SELECT * FROM perfis_rf WHERE id_perfil_rf = $1",
-      [input.id_perfil_rf]
+      "SELECT * FROM perfis_rf WHERE id_perfil_rf = $1 AND id_usuario = $2",
+      [input.id_perfil_rf, input.id_usuario]
     );
     const rf = rfResult.rows[0];
     if (!rf) throw new Error("Perfil de RF não encontrado.");
