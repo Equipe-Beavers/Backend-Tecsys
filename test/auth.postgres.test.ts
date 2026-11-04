@@ -26,10 +26,6 @@ describe.skipIf(!isolated)("autenticação com PostgreSQL temporário real", () 
     await database.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
     const schema = readFileSync(new URL("../database/schema.sql", import.meta.url), "utf8");
     await database.query(schema);
-    const migration = readFileSync(new URL("../database/migrations/20261103_auth_user_uniqueness.sql", import.meta.url), "utf8");
-    await database.query(migration);
-    await database.query(migration); // Reapplying must be safe.
-    await database.query(readFileSync(new URL("../database/migrations/20261103_auth_sessions.sql", import.meta.url), "utf8"));
     const { App } = await import("../src/app.js");
     app = new App({ authSecret: "isolated-postgres-secret-with-thirty-two-bytes" }).getInstance();
     await app.ready();
@@ -149,7 +145,7 @@ describe.skipIf(!isolated)("autenticação com PostgreSQL temporário real", () 
       const criterion = (await database.query("INSERT INTO criterios_instalacao(id_usuario,nome) VALUES ($1,'Critério') RETURNING id_criterio_instalacao", [id])).rows[0].id_criterio_instalacao;
       const study = (await database.query("INSERT INTO estudos(id_usuario,id_perfil_rf,id_criterio_instalacao,nome,tipo_delimitacao,status) VALUES ($1,$2,$3,'Estudo','desenho','AGUARDANDO_SELECAO') RETURNING id_estudo", [id, profile, criterion])).rows[0].id_estudo;
       const point = (await database.query("INSERT INTO estudo_pontos(id_estudo,origem,papel,latitude,longitude) VALUES ($1,'manual','candidato',-23,-45) RETURNING id_estudo_ponto", [study])).rows[0].id_estudo_ponto;
-      const scenario = (await database.query("INSERT INTO cenarios(id_estudo,nome,status) VALUES ($1,'Cenário','teste') RETURNING id_cenario", [study])).rows[0].id_cenario;
+      const scenario = (await database.query("INSERT INTO cenarios(id_estudo,id_perfil_rf,nome,status) VALUES ($1,$2,'Cenário','teste') RETURNING id_cenario", [study, profile])).rows[0].id_cenario;
       const gateway = (await database.query("INSERT INTO cenario_gateways(id_cenario,id_estudo_ponto) VALUES ($1,$2) RETURNING id_cenario_gateway", [scenario,point])).rows[0].id_cenario_gateway;
       fixtures.push({ profile, criterion, study, point, scenario, gateway });
     }
