@@ -1,9 +1,16 @@
+import { AuthError } from "../utils/AuthError.js";
 import { pool } from "../database/pool.js";
 
 export class SessionService {
-  async create(userId: string, tokenId: string, expiresAt: number): Promise<void> {
-    await pool.query(`INSERT INTO sessoes_usuario (jti, id_usuario, expira_em)
-      VALUES ($1, $2, to_timestamp($3))`, [tokenId, userId, expiresAt]);
+  async create(userId: string, tokenId: string, expiresAt: number, verifiedHash?: string): Promise<void> {
+    const result = await pool.query(`WITH usuario AS (
+      SELECT id_usuario, senha_hash FROM usuarios WHERE id_usuario = $2 FOR UPDATE
+    ) INSERT INTO sessoes_usuario (jti, id_usuario, expira_em)
+      SELECT $1, id_usuario, to_timestamp($3) FROM usuario
+      WHERE ($4::text IS NULL OR senha_hash = $4)`, [tokenId, userId, expiresAt, verifiedHash ?? null]);
+    if (result.rowCount === 0) {
+      throw new AuthError(401, "INVALID_CREDENTIALS", "E-mail ou senha inválidos.");
+    }
   }
 
   async isActive(userId: string, tokenId: string): Promise<boolean> {
