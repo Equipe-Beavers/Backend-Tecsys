@@ -5,10 +5,11 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "node scripts/dev.mjs",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "email:test": "tsx scripts/test-email.ts"
   },
   "repository": {
     "type": "git",
@@ -30,6 +31,7 @@
     "dotenv": "^18.0.7",
     "fastify": "^5.12.1",
     "pg": "^8.23.0",
+    "resend": "^6.37.0",
     "ws": "^8.21.3"
   },
   "devDependencies": {

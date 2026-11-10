@@ -7,6 +7,9 @@ import { UserService } from "../services/UserService.js";
 import type { CriarUsuario, LoginUsuario } from "../interface/usuario.js";
 import { AuthError } from "../utils/AuthError.js";
 import { SessionService } from "../services/SessionService.js";
+import { PasswordResetService, resetReceipt } from "../services/PasswordResetService.js";
+import { EmailDeliveryError } from "../services/EmailService.js";
+import { registerPasswordResetPage } from "../views/password-reset.js";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -97,6 +100,39 @@ export async function authRoutes(app: FastifyInstance, options: { secret?: strin
   const controller = new UserController();
   const users = new UserService();
   const signupLimiter = app.rateLimit({ max: 5, timeWindow: "15 minutes" });
+  registerPasswordResetPage(app);
+
+  for (const reset of [false, true]) {
+    app.post<{ Body: { email: string; token: string; senha: string } }>(
+      reset ? "/auth/reset-password" : "/auth/forgot-password", {
+        preValidation: validateRawStrings,
+        config: { rateLimit: { max: reset ? 10 : 5, timeWindow: "15 minutes" } },
+        schema: { body: { type: "object", additionalProperties: false,
+          required: reset ? ["token", "senha"] : ["email"],
+          properties: reset ? {
+            token: { type: "string", pattern: "^[a-f0-9]{64}$" },
+            senha: { type: "string", minLength: 8, maxLength: 128 },
+          } : { email: fields.email },
+        } },
+      }, async (request, reply) => {
+        reply.header("Cache-Control", "no-store");
+        try {
+          const service = new PasswordResetService();
+          if (reset) {
+            await service.reset(request.body.token, request.body.senha);
+            return reply.status(204).send();
+          }
+          await service.request(request.body.email);
+          return reply.status(202).send({ message: resetReceipt });
+        } catch (error) {
+          if (error instanceof AuthError) {
+            return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+          }
+          request.log.error({ code: error instanceof EmailDeliveryError ? error.code : "PASSWORD_RESET_FAILED" }, "Falha na recuperação de senha");
+          return reply.status(503).send({ code: "PASSWORD_RESET_UNAVAILABLE", message: "Recuperação de senha temporariamente indisponível." });
+        }
+      });
+  }
 
   // All registration URLs share one implementation; the old hash-input contract is rejected.
   for (const url of ["/auth/register", "/usuarios", "/create-user"]) {
@@ -112,11 +148,12 @@ export async function authRoutes(app: FastifyInstance, options: { secret?: strin
     reply.header("Cache-Control", "no-store");
     try {
       authSecret(options.secret);
-      const user = await users.authenticate(request.body);
+      let verifiedHash: string | undefined;
+      const user = await users.authenticate(request.body, (hash) => { verifiedHash = hash; });
       const jti = randomUUID();
       const token = await reply.jwtSign({ sub: String(user.id_usuario), jti });
       const payload = app.jwt.decode<{ exp: number }>(token)!;
-      await new SessionService().create(String(user.id_usuario), jti, payload.exp);
+      await new SessionService().create(String(user.id_usuario), jti, payload.exp, verifiedHash);
       return reply.send({ access_token: token, token_type: "Bearer", expires_in: 3600, usuario: user });
     } catch (error) {
       if (error instanceof AuthError) {

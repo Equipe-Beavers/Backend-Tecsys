@@ -19,7 +19,7 @@ import { vegetacaoRoutes } from "./modules/vegetacao.routes.js";
 export class App {
   public app: fastify.FastifyInstance;
   constructor(options: { authSecret?: string } = {}) {
-    this.app = fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.senha"] }, ajv: { customOptions: { removeAdditional: false } } });
+    this.app = fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.senha", "req.body.token"] }, ajv: { customOptions: { removeAdditional: false } } });
     registerResourceProtection(this.app);
     void this.app.register(cors, {
       origin: process.env.CORS_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean)

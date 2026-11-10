@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const socket = process.env.AUTH_POSTGRES_TEST_SOCKET;
 // This suite can only connect to a disposable cluster in /tmp, never to .env/AWS.
@@ -232,4 +232,47 @@ describe.skipIf(!isolated)("autenticação com PostgreSQL temporário real", () 
       expect(meB.json().usuario.email).toBe("b@example.com");
     } finally { await restarted.close(); }
   });
+  it("recupera senha com token de uso único, revoga sessões e bloqueia login antigo concorrente", async () => {
+    const { EmailService } = await import("../src/services/EmailService.js");
+    const { PasswordService } = await import("../src/services/PasswordService.js");
+    const { SessionService } = await import("../src/services/SessionService.js");
+    const { randomUUID } = await import("node:crypto");
+    const input = { username: "Recuperacao PostgreSQL", email: "delivered@resend.dev", senha: "Senha anterior segura!" };
+    const send = vi.spyOn(EmailService.prototype, "sendText").mockResolvedValue("test-email-id");
+    vi.stubEnv("RESEND_API_KEY", "isolated-test");
+    vi.stubEnv("EMAIL_FROM", "Geomash <onboarding@resend.dev>");
+    vi.stubEnv("PASSWORD_RESET_URL", "http://localhost:8080/");
+    try {
+      expect((await app.inject({ method: "POST", url: "/auth/register", payload: input })).statusCode).toBe(201);
+      const logins = await Promise.all([1, 2].map(() => app.inject({ method: "POST", url: "/auth/login", payload: { email: input.email, senha: input.senha } })));
+      expect(logins.map(r => r.statusCode)).toEqual([200, 200]);
+      const before = (await database.query("SELECT id_usuario, senha_hash FROM usuarios WHERE email = $1", [input.email])).rows[0];
+      const receipt = await app.inject({ method: "POST", url: "/auth/forgot-password", payload: { email: input.email } });
+      const unknown = await app.inject({ method: "POST", url: "/auth/forgot-password", payload: { email: "unknown@example.com" } });
+      expect(receipt.statusCode).toBe(202); expect(unknown.body).toBe(receipt.body);
+      expect(send).toHaveBeenCalledTimes(1);
+      const link = send.mock.calls[0]![0].text.match(/http[^\s]+/)![0];
+      const token = new URL(link).hash.split("token=")[1]!;
+      const stored = (await database.query("SELECT * FROM recuperacoes_senha WHERE id_usuario = $1", [before.id_usuario])).rows[0];
+      expect(stored.token_hash).not.toBe(token);
+      expect(stored.expira_em.getTime() - stored.criado_em.getTime()).toBe(900000);
+      const payload = { token, senha: "Senha nova segura!" };
+      const resets = await Promise.all([1, 2].map(() => app.inject({ method: "POST", url: "/auth/reset-password", payload })));
+      expect(resets.map(r => r.statusCode).sort()).toEqual([204, 400]);
+      for (const login of logins) {
+        expect((await app.inject({ url: "/auth/me", headers: { authorization: `Bearer ${login.json().access_token}` } })).statusCode).toBe(401);
+      }
+      expect((await app.inject({ method: "POST", url: "/auth/login", payload: { email: input.email, senha: input.senha } })).statusCode).toBe(401);
+      const next = await app.inject({ method: "POST", url: "/auth/login", payload: { email: input.email, senha: payload.senha } });
+      expect(next.statusCode).toBe(200);
+      const saved = (await database.query("SELECT senha_hash FROM usuarios WHERE id_usuario = $1", [before.id_usuario])).rows[0];
+      expect(await new PasswordService().verify(payload.senha, saved.senha_hash)).toBe(true);
+      await expect(new SessionService().create(String(before.id_usuario), randomUUID(), Math.floor(Date.now() / 1000) + 3600, before.senha_hash)).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+      // Expired links do not modify the password or revoke a later session.
+      await database.query("UPDATE recuperacoes_senha SET criado_em = CURRENT_TIMESTAMP - INTERVAL '1 hour', expira_em = CURRENT_TIMESTAMP - INTERVAL '1 minute', usado_em = NULL WHERE id_usuario = $1", [before.id_usuario]);
+      expect((await app.inject({ method: "POST", url: "/auth/reset-password", payload })).statusCode).toBe(400);
+      expect((await app.inject({ url: "/auth/me", headers: { authorization: `Bearer ${next.json().access_token}` } })).statusCode).toBe(200);
+    } finally { send.mockRestore(); vi.unstubAllEnvs(); }
+  }, 20000);
+
 });

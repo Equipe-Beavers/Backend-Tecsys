@@ -591,4 +591,14 @@ ALTER TABLE ONLY public.subestacoes
 ALTER TABLE ONLY public.sessoes_usuario
     ADD CONSTRAINT sessoes_usuario_id_usuario_fkey FOREIGN KEY (id_usuario) REFERENCES public.usuarios(id_usuario) ON DELETE CASCADE;
 
+-- Recuperação de senha: somente o hash do token é persistido.
+CREATE TABLE public.recuperacoes_senha (
+    token_hash character(64) PRIMARY KEY CHECK (token_hash ~ '^[a-f0-9]{64}$'),
+    id_usuario bigint NOT NULL UNIQUE REFERENCES public.usuarios(id_usuario) ON DELETE CASCADE,
+    criado_em timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expira_em timestamp with time zone NOT NULL,
+    usado_em timestamp with time zone,
+    CONSTRAINT recuperacoes_senha_expiracao_check CHECK (expira_em > criado_em)
+);
+
 COMMIT;
