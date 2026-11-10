@@ -85,6 +85,7 @@ export class RecommendationUtils {
     interestPoint: EstudoPonto[],
     RFProfile: PerfilRf,
     coverage: Map<number, AtendimentoCalculado[]>,
+    maxGateways = Infinity,
   ): ResultadoCalculo {
     const capability = RFProfile.capacidade_max_equipamentos ?? Infinity;
     const pending = new Map(interestPoint.map((p) => [p.id_estudo_ponto, p]));
@@ -92,7 +93,7 @@ export class RecommendationUtils {
     const gateways: GatewayCalculado[] = [];
     let rest = [...candidates];
 
-    while (pending.size > 0 && rest.length > 0) {
+    while (pending.size > 0 && rest.length > 0 && gateways.length < maxGateways) {
         let best: {candidate: EstudoPonto;  covered: AtendimentoCalculado[]; score: number} | null = null;
         for (const c of rest) {
             const possibilities = (coverage.get(c.id_estudo_ponto) ?? []).filter(
@@ -117,5 +118,60 @@ export class RecommendationUtils {
         rest =  rest.filter((c) => c.id_estudo_ponto !== choosedCandidate.id_estudo_ponto);
     }
     return {gateways, pontosNaoCobertos: [...pending.values()]};
+  }
+
+  CalculateAlternatives(
+    candidates: EstudoPonto[],
+    interestPoints: EstudoPonto[],
+    profile: PerfilRf,
+    coverage: Map<number, AtendimentoCalculado[]>,
+    maxGateways = Infinity,
+    count = 6,
+  ): ResultadoCalculo[] {
+    const signature = (result: ResultadoCalculo) => result.gateways
+      .map((gateway) => gateway.candidato.id_estudo_ponto)
+      .sort((first, second) => first - second).join(",");
+    const priority = (result: ResultadoCalculo) => result.gateways.reduce(
+      (total, gateway) => total + gateway.atendimentos.reduce(
+        (score, attendance) => score + (WEIGHT_PRIORIRY[attendance.ponto.prioridade ?? "normal"] ?? 1), 0,
+      ), 0,
+    );
+    const compare = (first: ResultadoCalculo, second: ResultadoCalculo) =>
+      priority(second) - priority(first) ||
+      first.pontosNaoCobertos.length - second.pontosNaoCobertos.length ||
+      first.gateways.length - second.gateways.length ||
+      signature(first).localeCompare(signature(second));
+    const initial = this.CalculateRecommendation(candidates, interestPoints, profile, coverage, maxGateways);
+    const results: ResultadoCalculo[] = [initial];
+    const seenResults = new Set([signature(initial)]);
+    const seenExclusions = new Set<string>();
+    const queue = [{ excluded: new Set<number>(), result: initial }];
+    const maxAttempts = Math.max(100, Math.min(candidates.length * count * 4, 2000));
+    let attempts = 0;
+
+    while (queue.length > 0 && attempts < maxAttempts) {
+      const current = queue.shift()!;
+      for (const gateway of current.result.gateways) {
+        if (attempts++ >= maxAttempts) break;
+        const excluded = new Set([...current.excluded, gateway.candidato.id_estudo_ponto]);
+        const key = [...excluded].sort((first, second) => first - second).join(",");
+        if (seenExclusions.has(key)) continue;
+        seenExclusions.add(key);
+        const result = this.CalculateRecommendation(
+          candidates.filter((candidate) => !excluded.has(candidate.id_estudo_ponto)),
+          interestPoints, profile, coverage, maxGateways,
+        );
+        if (result.gateways.length === 0) continue;
+        queue.push({ excluded, result });
+        const resultKey = signature(result);
+        if (!seenResults.has(resultKey)) {
+          seenResults.add(resultKey);
+          results.push(result);
+        }
+      }
+      queue.sort((first, second) => compare(first.result, second.result));
+    }
+
+    return [initial, ...results.slice(1).sort(compare)].slice(0, count);
   }
 }

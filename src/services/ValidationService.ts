@@ -1,6 +1,9 @@
 import { pool } from "../database/pool.js";
+import type { PoolClient } from "pg";
 
 export class ValidationService {
+  constructor(private database: Pick<PoolClient, "query"> = pool) {}
+
   async verifyRecord(
     table: string,
     column: string,
@@ -9,7 +12,7 @@ export class ValidationService {
   ): Promise<void> {
     try {
         const query = `SELECT ${column} FROM ${table} WHERE ${column} = $1 LIMIT 1;`;
-        const result = await pool.query(query, [value]);
+        const result = await this.database.query(query, [value]);
 
         if (!result.rows[0]) throw new Error(`${entity} não encontrada.`)
     } catch (error: any) {

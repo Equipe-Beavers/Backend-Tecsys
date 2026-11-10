@@ -40,4 +40,26 @@ describe("RecommendationUtils.CalculateRecommendation", () => {
         expect(result.gateways.map((g) => g.candidato.id_estudo_ponto)).toEqual([1, 2]);
         expect(result.pontosNaoCobertos).toHaveLength(0);
     });
+
+    it("gera seis conjuntos distintos sem alterar os enlaces ou resultados anteriores", () => {
+        const options = Array.from({ length: 7 }, (_, index) => point(index + 1));
+        const links = new Map(options.map((candidate) => [candidate.id_estudo_ponto, serve([1, 2, 3, 4])]));
+        const results = utils.CalculateAlternatives(options, meters, profile, links);
+        expect(results).toHaveLength(6);
+        expect(new Set(results.map((result) => result.gateways.map((gateway) => gateway.candidato.id_estudo_ponto).join(","))).size).toBe(6);
+        expect(results[0]!.gateways[0]!.candidato.id_estudo_ponto).toBe(1);
+        expect(results.every((result) => result.pontosNaoCobertos.length === 0)).toBe(true);
+        results[1]!.gateways.pop();
+        expect(results[0]!.gateways).toHaveLength(1);
+        expect(links.get(1)).toHaveLength(4);
+    });
+
+    it("respeita capacidade e limite de gateways e nao fabrica alternativas duplicadas", () => {
+        const limited = { capacidade_max_equipamentos: 1 } as PerfilRf;
+        const results = utils.CalculateAlternatives(candidates, meters, limited, coverage, 1);
+        expect(results).toHaveLength(2);
+        expect(results.every((result) => result.gateways.length === 1)).toBe(true);
+        expect(results.every((result) => result.gateways[0]!.atendimentos.length === 1)).toBe(true);
+        expect(results.every((result) => result.pontosNaoCobertos.length === 3)).toBe(true);
+    });
 });
