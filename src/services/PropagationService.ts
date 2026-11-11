@@ -1,4 +1,5 @@
 import { pool } from "../database/pool.js";
+import type { PoolClient } from "pg";
 import {
     findScenarioCoverageQuery,
     findScenarioGatewaysCoverageQuery,
@@ -206,8 +207,8 @@ export class PropagationService {
         return this.buildCoverage(input.latitude, input.longitude, params, input.rays ?? DEFAULT_RAYS);
     }
 
-    async saveGatewayCoverage(idScenarioGateway: number, coverage: Coverage, params: PropagationParameters) {
-        await pool.query(updateGatewayCoverageQuery, [
+    async saveGatewayCoverage(idScenarioGateway: number, coverage: Coverage, params: PropagationParameters, database: Pick<PoolClient, "query"> = pool, snapshot: Record<string, unknown> = {}) {
+        await database.query(updateGatewayCoverageQuery, [
             idScenarioGateway,
             JSON.stringify(coverage.geometry),
             JSON.stringify({
@@ -219,11 +220,12 @@ export class PropagationService {
                 altura_dispositivo_m: params.deviceHeightM,
                 margem_db: params.marginDb,
                 raios: coverage.rays,
+                ...snapshot,
             }),
         ]);
     }
-    async saveScenarioCoverage(idScenario: number): Promise<Record<string, unknown> | null> {
-        const result = await pool.query(updateScenarioCoverageQuery, [idScenario]);
+    async saveScenarioCoverage(idScenario: number, database: Pick<PoolClient, "query"> = pool): Promise<Record<string, unknown> | null> {
+        const result = await database.query(updateScenarioCoverageQuery, [idScenario]);
         return result.rows[0]?.mancha_consolidada ?? null;
     }
     async getScenarioCoverage(idScenario: number, userId: number): Promise<ScenarioCoverage> {

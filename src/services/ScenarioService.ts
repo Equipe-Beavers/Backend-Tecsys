@@ -1,4 +1,5 @@
 import { pool } from "../database/pool.js";
+import type { PoolClient } from "pg";
 import type {
   CenarioAtendimento,
   CriarCenarioAtendimento,
@@ -13,8 +14,8 @@ import { ValidationService } from "./ValidationService.js";
 export class ScenarioService {
   private validationService: ValidationService;
 
-  constructor() {
-    this.validationService = new ValidationService();
+  constructor(private database: Pick<PoolClient, "query"> = pool) {
+    this.validationService = new ValidationService(database);
   }
 
   async createScenario(scenarioData: CriarCenario): Promise<Cenario> {
@@ -78,7 +79,7 @@ export class ScenarioService {
       ) RETURNING *;
     `;
 
-    const result = await pool.query(query, cenario);
+    const result = await this.database.query(query, cenario);
 
     if (!result.rows[0]) throw new Error("Erro ao criar cenário.");
     return result.rows[0] as Cenario;
@@ -113,7 +114,7 @@ export class ScenarioService {
       VALUES ($1, $2, $3, $4) RETURNING *;
     `;
 
-    const result = await pool.query(query, atendimento);
+    const result = await this.database.query(query, atendimento);
 
     if (!result.rows[0]) throw new Error("Erro ao criar atendimento do cenário.");
     return result.rows[0] as CenarioAtendimento;
@@ -155,7 +156,7 @@ export class ScenarioService {
       ) RETURNING *;
     `;
 
-    const result = await pool.query(query, gateway);
+    const result = await this.database.query(query, gateway);
 
     if (!result.rows[0]) throw new Error("Erro ao criar gateway do cenário.");
     return result.rows[0] as CenarioGateway;

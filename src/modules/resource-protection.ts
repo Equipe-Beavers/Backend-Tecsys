@@ -12,6 +12,7 @@ export const protectedResourceRoutes = new Set([
   ...createOwned, ...listOwned,
   "/estudos/:id", "/study/:id", "/study/:id/points", "/estudos/:id/pontos",
   "/study/:id/recommendation", "/get-scenario-coverage/:id", "/generate-coverage",
+  "/study/:id/recommendations", "/study/:id/selected-scenario",
   "/create-scenario", "/cenarios", "/create-gateway-scenario", "/cenario-gateways",
   "/create-service-scenario", "/cenario-atendimentos", "/get-install-criterion/:id",
   "/update-install-criterion/:id", "/delete-install-criterion/:id",
@@ -79,7 +80,7 @@ async function authorizeReferences(request: FastifyRequest, route: string): Prom
     await ownership.require("study", params.id, userId);
     body.id_estudo = Number(params.id);
   }
-  if (route === "/study/:id/recommendation") {
+  if (["/study/:id/recommendation", "/study/:id/recommendations", "/study/:id/selected-scenario"].includes(route)) {
     await ownership.require("study", params.id, userId);
   }
   if (route === "/get-scenario-coverage/:id") await ownership.require("scenario", params.id, userId);
