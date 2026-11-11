@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmailService } from "../src/services/EmailService.js";
 
+beforeEach(() => vi.stubEnv("EMAIL_PROVIDER", "resend"));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("envio Resend", () => {

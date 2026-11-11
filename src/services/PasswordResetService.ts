@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { pool } from "../database/pool.js";
 import { PasswordService } from "./PasswordService.js";
-import { EmailService } from "./EmailService.js";
+import { EmailDeliveryError, EmailService } from "./EmailService.js";
 import { AuthError } from "../utils/AuthError.js";
 
 export const resetReceipt = "Se houver uma conta com esse e-mail, enviaremos as instruções para redefinir a senha.";
@@ -56,10 +56,11 @@ export class PasswordResetService {
         text: `Recebemos uma solicitação para redefinir sua senha no Geomash.\n\nAbra o link abaixo e escolha uma nova senha:\n${base.href}\n\nO link expira em 15 minutos e só pode ser utilizado uma vez.\nSe você não solicitou a alteração, ignore esta mensagem. Sua senha permanece a mesma.`,
         idempotencyKey: `password-reset/${randomUUID()}` });
       console.info(JSON.stringify({ event: "password-reset-email-accepted", emailId }));
-    } catch {
+    } catch (error) {
       // A delivery failure must not reveal whether the address belongs to an account.
       await pool.query("UPDATE recuperacoes_senha SET usado_em = CURRENT_TIMESTAMP WHERE token_hash = $1", [tokenHash]);
-      console.error("PASSWORD_RESET_EMAIL_FAILED");
+      console.error(JSON.stringify({ event: "password-reset-email-failed", provider: mail.provider,
+        code: error instanceof EmailDeliveryError ? error.code : "EMAIL_SEND_FAILED" }));
     }
   }
 

@@ -239,6 +239,7 @@ describe.skipIf(!isolated)("autenticação com PostgreSQL temporário real", () 
     const { randomUUID } = await import("node:crypto");
     const input = { username: "Recuperacao PostgreSQL", email: "delivered@resend.dev", senha: "Senha anterior segura!" };
     const send = vi.spyOn(EmailService.prototype, "sendText").mockResolvedValue("test-email-id");
+    vi.stubEnv("EMAIL_PROVIDER", "resend");
     vi.stubEnv("RESEND_API_KEY", "isolated-test");
     vi.stubEnv("EMAIL_FROM", "Geomash <onboarding@resend.dev>");
     vi.stubEnv("PASSWORD_RESET_URL", "http://localhost:8080/");
