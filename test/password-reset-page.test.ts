@@ -11,7 +11,7 @@ describe("página pública de redefinição no próprio backend", () => {
       const source = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)![1]!;
       const token = "a".repeat(64);
       const execute = (status: number, rawToken = token) => {
-        const elements = Object.fromEntries(["form", "notice", "password", "confirmation", "submit", "toggle", "intro", "instructions"].map(id => [id, {
+        const elements = Object.fromEntries(["form", "notice", "password", "confirmation", "submit", "toggle", "intro", "instructions", "loading", "main"].map(id => [id, {
           value: "Senha nova segura!", type: "password", hidden: false, disabled: false,
           textContent: "", className: "", validity: "", listeners: {} as Record<string, (event?: unknown) => Promise<void>>,
           addEventListener(name: string, fn: (event?: unknown) => Promise<void>) { this.listeners[name] = fn; },
@@ -19,11 +19,12 @@ describe("página pública de redefinição no próprio backend", () => {
         }]));
         const calls: { url: string; body: { token: string; senha: string } }[] = [];
         new Script(source).runInContext(createContext({
-          document: { getElementById: (id: string) => elements[id] },
+          document: { getElementById: (id: string) => elements[id], querySelector: () => elements.main },
           location: { hash: `#token=${rawToken}`, pathname: "/redefinir-senha" },
           history: { replaceState() {} }, URLSearchParams, AbortSignal,
           fetch: async (url: string, options: { body: string }) => {
             calls.push({ url, body: JSON.parse(options.body) });
+            if (status === 0) throw new Error("network unavailable");
             return { status, json: async () => ({ code: "INVALID_RESET_TOKEN" }) };
           },
         }));
@@ -35,12 +36,22 @@ describe("página pública de redefinição no próprio backend", () => {
       expect(success.calls).toHaveLength(0);
       expect(success.elements.confirmation!.validity).toContain("não coincidem");
       success.elements.confirmation!.value = success.elements.password!.value;
-      await success.submit();
+      const submitted = success.submit();
+      expect(success.elements.loading!.hidden).toBe(false);
+      expect(success.elements.main!.hidden).toBe(true);
+      await submitted;
+      expect(success.elements.loading!.hidden).toBe(true);
+      expect(success.elements.main!.hidden).toBe(false);
       expect(success.calls).toEqual([{ url: "/auth/reset-password", body: { token, senha: "Senha nova segura!" } }]);
       expect(success.elements.form!.hidden).toBe(true);
       expect(success.elements.notice!.textContent).toContain("Senha alterada com sucesso");
       const expired = execute(400); await expired.submit();
       expect(expired.elements.notice!.textContent).toContain("expirou");
+      expect(expired.elements.loading!.hidden).toBe(true);
+      const network = execute(0); await network.submit();
+      expect(network.elements.loading!.hidden).toBe(true);
+      expect(network.elements.main!.hidden).toBe(false);
+      expect(network.elements.notice!.textContent).toContain("conectar ao servidor");
       const invalid = execute(400, "invalid");
       expect(invalid.elements.form!.hidden).toBe(true);
       expect(invalid.calls).toHaveLength(0);
