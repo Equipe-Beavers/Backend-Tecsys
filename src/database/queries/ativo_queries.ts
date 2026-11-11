@@ -246,6 +246,68 @@ export function findAssetsQuery(filters: AssetFilters) {
     };
 }
 
+/**
+ * Para uma área desenhada, todos os ativos BDGD são alvos de cobertura.
+ * O criterio de instalacao define EM QUAIS ativos um gateway pode ser instalado.
+ * Um ativo permitido pode ser 'ambos': candidato e ponto de interesse.
+ * A amostra de candidatos e limitada, mas a contagem de interesse e integral.
+ */
+export function findStudyAssetsQuery(
+    bbox: { minLongitude: number; minLatitude: number; maxLongitude: number; maxLatitude: number },
+    studyId: number,
+    maxInterest: number,
+    maxCandidates: number,
+    criterionId: number | null = null,
+) {
+    return {
+        values: [bbox.minLongitude, bbox.minLatitude, bbox.maxLongitude, bbox.maxLatitude,
+            studyId, maxInterest, maxCandidates, criterionId],
+        text: `
+            ${assetCte},
+            study AS (
+                SELECT e.geom, e.distribuidora, e.id_usuario,
+                    COALESCE($8::bigint, e.id_criterio_instalacao) AS criterio_id
+                FROM estudos e
+                WHERE e.id_estudo = $5 AND e.geom IS NOT NULL
+            ),
+            selected_criterion AS (
+                SELECT c.tipos_elementos_permitidos, c.tipos_elementos_proibidos
+                FROM study s
+                JOIN criterios_instalacao c
+                  ON c.id_criterio_instalacao = s.criterio_id
+                 AND c.id_usuario = s.id_usuario
+            ),
+            inside_area AS (
+                SELECT a.id, a.cod_id, a.tipo, a.latitude, a.longitude, a.atributos,
+                    (
+                        (c.tipos_elementos_permitidos IS NULL
+                         OR c.tipos_elementos_permitidos = '[]'::jsonb
+                         OR c.tipos_elementos_permitidos ? a.tipo)
+                        AND NOT (COALESCE(c.tipos_elementos_proibidos, '[]'::jsonb) ? a.tipo)
+                    ) AS candidato_permitido
+                FROM ativos a CROSS JOIN study s CROSS JOIN selected_criterion c
+                WHERE ST_Covers(s.geom,
+                    ST_SetSRID(ST_MakePoint(a.longitude, a.latitude), 4674))
+                  AND (NULLIF(s.distribuidora, '') IS NULL OR a.distribuidora = s.distribuidora)
+            ),
+            ranked AS (
+                SELECT *,
+                    row_number() OVER (PARTITION BY candidato_permitido ORDER BY md5(id)) AS ordem_candidato,
+                    COUNT(*) OVER () AS total_interesse,
+                    COUNT(*) FILTER (WHERE candidato_permitido) OVER () AS total_candidatos
+                FROM inside_area
+            )
+            SELECT id, cod_id, tipo, latitude, longitude, atributos,
+                CASE WHEN candidato_permitido AND ordem_candidato <= $7
+                     THEN 'ambos' ELSE 'interesse' END AS papel,
+                total_interesse, total_candidatos
+            FROM ranked
+            ORDER BY id
+            LIMIT ($6::integer + 1)
+        `,
+    };
+}
+
 export const findDeviceTypesQuery = `
     SELECT
         id_tipo_dispositivo AS id,

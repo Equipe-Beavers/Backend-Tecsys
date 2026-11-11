@@ -8,6 +8,7 @@ import type { BuildingsAround } from "./BuildingService.js";
 import type { Coverage } from "../interface/PropagationDTO.js";
 import type { InstallCriterionDTO } from "../interface/InstallCriterionDTO.js";
 import { EnvironmentalService } from "./EnvironmentalService.js";
+import { StudyAssetPreparationService } from "./StudyAssetPreparationService.js";
 
 export interface GerarRecomendacaoInput {
   id_estudo: number;
@@ -44,8 +45,12 @@ export class RecommendationService {
     const rf = rfResult.rows[0];
     if (!rf) throw new Error("Perfil de RF não encontrado.");
 
+    // Os vertices do poligono definem a area, mas nao sao ativos BDGD.
+    const preparation = await new StudyAssetPreparationService().prepare(
+      input.id_estudo, input.id_criterio_instalacao ?? null,
+    );
     const pointsResult = await pool.query(
-      "SELECT * FROM estudo_pontos WHERE id_estudo = $1",
+      "SELECT * FROM estudo_pontos WHERE id_estudo = $1 AND COALESCE(atributos->>'tipo_ponto', '') <> 'vertice_area'",
       [input.id_estudo]
     );
     const points = pointsResult.rows;
@@ -80,6 +85,11 @@ export class RecommendationService {
 
     const params = this.propagationService.buildParameters(rf as PerfilRf);
     const environmental = await this.environmentalService.prepare(allPoints);
+    if (preparation.totalCandidates > preparation.importedCandidates) {
+      environmental.summary.avisos.push(
+        `Avaliados ${preparation.importedCandidates} de ${preparation.totalCandidates} candidatos BDGD (amostragem operacional).`,
+      );
+    }
     const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
     const propagationPoints = interestPoints.map((p) => ({
       id: String(p.id_estudo_ponto),
