@@ -1,7 +1,12 @@
 export interface StudyExportQuery {
+    /** Cenário selecionado na tela (aba aberta). Sem ele, usa o cenário otimizado. */
     id_cenario?: number;
+    /** Padrão true: o PDF traz todos os cenários do estudo e o comparativo. Só false restringe ao selecionado. */
     incluir_alternativas?: boolean;
+    /** Imagem (base64 PNG/JPEG) do mapa do cenário selecionado. */
     imagem_mapa?: string | null;
+    /** Imagens dos mapas dos demais cenários, indexadas pelo id_cenario. */
+    imagens_mapa?: Record<string, string | null>;
 }
 
 export interface ExportStudyInfo {
@@ -59,15 +64,45 @@ export interface ExportIndicators {
     custo_total_estimado: number | null;
 }
 
+export interface ExportRfProfile {
+    nome: string | null;
+    modelo_gateway: string | null;
+    frequencia_mhz: number | null;
+    potencia_transmissao_dbm: number | null;
+    sensibilidade_recepcao_dbm: number | null;
+    alcance_estimado_m: number | null;
+    altura_gateway_m: number | null;
+    altura_dispositivo_m: number | null;
+    capacidade_max_equipamentos: number | null;
+    quantidade_canais: number | null;
+    custo_estimado_gateway: number | null;
+}
+
+export interface ExportCriterion {
+    nome: string | null;
+    distancia_minima_ativos_m: number | null;
+    distancia_maxima_ativos_m: number | null;
+    altura_minima_m: number | null;
+    limite_gateways: number | null;
+    custo_maximo: number | null;
+}
+
 export interface ExportScenario {
     id_cenario: number;
     nome: string;
+    /** "Otimizada" ou "Alt. N", como nas abas da aplicação. */
+    rotulo: string;
+    otimizado: boolean;
+    selecionado: boolean;
     descricao: string | null;
+    objetivo: string | null;
     status: string;
     nome_perfil_rf: string | null;
     capacidade_max_equipamentos: number | null;
+    perfil_rf: ExportRfProfile | null;
+    criterio: ExportCriterion | null;
+    imagem_mapa: Buffer | null;
     executado_em: Date | null;
-    final: boolean;
     indicadores: ExportIndicators;
     por_categoria: ExportCategory[];
     gateways: ExportGateway[];
@@ -78,7 +113,7 @@ export interface ExportScenario {
 export interface StudyExportReport {
     gerado_em: Date;
     estudo: ExportStudyInfo;
-    imagem_mapa: Buffer | null;
-    cenario_final: ExportScenario;
-    alternativas: ExportScenario[];
+    cenario_selecionado: ExportScenario;
+    /** Demais cenários do estudo (só quando incluir_alternativas), do otimizado às alternativas. */
+    outros_cenarios: ExportScenario[];
 }

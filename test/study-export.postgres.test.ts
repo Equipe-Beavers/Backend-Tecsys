@@ -128,7 +128,7 @@ describe.skipIf(!isolated)("exportação em PDF com PostgreSQL temporário real"
         const { StudyExportService } = await import("../src/services/StudyExportService.js");
         const { formatAssetType } = await import("../src/utils/StudyExportUtils.js");
         const report = await new StudyExportService().getReport(studyId, await ownerId(), { id_cenario: recommendation.id_cenario });
-        const final = report.cenario_final;
+        const final = report.cenario_selecionado;
 
         expect(report.estudo).toMatchObject({
             id_estudo: studyId, nome: "Alimentador SUL-14 — Fase 1",
@@ -163,7 +163,7 @@ describe.skipIf(!isolated)("exportação em PDF com PostgreSQL temporário real"
             const exported = final.por_categoria.find((c) => c.tipo_ativo === formatAssetType(category.tipo_ativo))!;
             expect(exported).toMatchObject({ total: category.total, nao_atendidos: category.nao_cobertos });
         }
-        expect(report.alternativas).toEqual([]);
+        expect(report.outros_cenarios).toEqual([]);
     });
 
     it("inclui as alternativas de implantação quando pedido", async () => {
@@ -173,11 +173,12 @@ describe.skipIf(!isolated)("exportação em PDF com PostgreSQL temporário real"
         const withAlternatives = await new StudyExportService().getReport(studyId, await ownerId(), {
             id_cenario: recommendation.id_cenario, incluir_alternativas: true,
         });
-        expect(withAlternatives.cenario_final.id_cenario).toBe(recommendation.id_cenario);
-        expect(withAlternatives.alternativas.map((s) => s.id_cenario)).toEqual([second.id_cenario]);
+        expect(withAlternatives.cenario_selecionado.id_cenario).toBe(recommendation.id_cenario);
+        expect(withAlternatives.outros_cenarios.map((s) => s.id_cenario)).toEqual([second.id_cenario]);
 
+        // sem id_cenario, exibe o cenário otimizado (o primeiro, sem cenário base)
         const latest = await new StudyExportService().getReport(studyId, await ownerId());
-        expect(latest.cenario_final.id_cenario).toBe(second.id_cenario);
+        expect(latest.cenario_selecionado.id_cenario).toBe(recommendation.id_cenario);
 
         const response = await call("POST", `/estudos/${studyId}/exportar-pdf`, owner, {
             id_cenario: recommendation.id_cenario, incluir_alternativas: true,

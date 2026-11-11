@@ -1,5 +1,5 @@
 import PDFDocument from "pdfkit";
-import type { ExportScenario, StudyExportReport } from "../interface/StudyExportDTO.js";
+import type { ExportCriterion, ExportRfProfile, ExportScenario, StudyExportReport } from "../interface/StudyExportDTO.js";
 import { sanitizeForPdf } from "./StudyExportUtils.js";
 
 type Doc = PDFKit.PDFDocument;
@@ -16,6 +16,9 @@ const COLORS = {
     border: "#D9E2EC",
     headerFill: "#E8EEF5",
     zebra: "#F7F9FB",
+    gateway: "#C8F135",
+    covered: "#35D6C0",
+    uncovered: "#FF9800",
 };
 
 const dateTime = new Intl.DateTimeFormat("pt-BR", {
@@ -155,27 +158,56 @@ function table(doc: Doc, columns: Column[], rows: string[][], emptyMessage = "Ne
     doc.moveDown(0.5);
 }
 
-function mapImage(doc: Doc, image: Buffer): void {
-    let opened: { width: number; height: number };
-    try {
-        opened = (doc as unknown as { openImage(src: Buffer): { width: number; height: number } }).openImage(image);
-    } catch {
+function legend(doc: Doc): void {
+    const items: Array<[string, string]> = [
+        [COLORS.gateway, "Gateway proposto"],
+        [COLORS.covered, "Ativo coberto"],
+        [COLORS.uncovered, "Sem cobertura"],
+    ];
+    ensureSpace(doc, 20);
+    let x = MARGIN;
+    const y = doc.y;
+    doc.font("Helvetica").fontSize(8.5);
+    for (const [color, label] of items) {
+        doc.circle(x + 5, y + 5, 4).fillAndStroke(color, COLORS.muted);
+        doc.fillColor(COLORS.text).text(label, x + 14, y + 1, { lineBreak: false });
+        x += 14 + doc.widthOfString(label) + 18;
+    }
+    doc.y = y + 18;
+}
+
+function mapSection(doc: Doc, scenario: ExportScenario): void {
+    const image = scenario.imagem_mapa;
+    let opened: { width: number; height: number } | null = null;
+    if (image) {
+        try {
+            opened = (doc as unknown as { openImage(src: Buffer): { width: number; height: number } }).openImage(image);
+        } catch {
+            opened = null;
+        }
+    }
+    if (!image || !opened) {
+        doc.font("Helvetica-Oblique").fontSize(9).fillColor(COLORS.muted)
+            .text("A imagem do mapa deste cenário não foi enviada pela aplicação no momento da exportação.", MARGIN, doc.y, { width: contentWidth(doc) });
+        doc.moveDown(0.6);
         return;
     }
     const maxWidth = contentWidth(doc);
-    const maxHeight = 300;
+    const maxHeight = 360;
     const scale = Math.min(maxWidth / opened.width, maxHeight / opened.height);
     const width = opened.width * scale;
     const height = opened.height * scale;
 
-    ensureSpace(doc, height + 24);
+    ensureSpace(doc, height + 40);
     const x = MARGIN + (maxWidth - width) / 2;
     const y = doc.y;
     doc.image(image, x, y, { width, height });
     doc.rect(x, y, width, height).lineWidth(1).strokeColor(COLORS.border).stroke();
     doc.font("Helvetica").fontSize(8).fillColor(COLORS.muted)
-        .text("Área do estudo e gateways recomendados, como exibidos na aplicação. Mapa: © Mapbox © OpenStreetMap.",
+        .text(`Mapa do cenário ${scenario.rotulo}: gateways propostos e ativos, como exibidos na aplicação.`,
             MARGIN, y + height + 4, { width: maxWidth, align: "center" });
+    doc.y = y + height + 20;
+    legend(doc);
     doc.moveDown(0.4);
 }
 
@@ -191,20 +223,44 @@ function scenarioIndicators(doc: Doc, scenario: ExportScenario): void {
     ]);
 }
 
-function scenarioDetails(doc: Doc, scenario: ExportScenario): void {
-    keyValues(doc, [
-        ["Cenário", scenario.nome],
-        ...(scenario.descricao ? [["Descrição", scenario.descricao] as [string, string]] : []),
-        ["Perfil RF", scenario.nome_perfil_rf ?? "-"],
-        ["Capacidade por gateway", scenario.capacidade_max_equipamentos !== null
-            ? `${formatNumber(scenario.capacidade_max_equipamentos)} equipamentos` : "Não informada"],
-        ["Custo total estimado", formatCurrency(scenario.indicadores.custo_total_estimado)],
-        ["Processado em", formatDate(scenario.executado_em)],
-    ]);
-    doc.moveDown(0.4);
-    scenarioIndicators(doc, scenario);
+function optional(label: string, value: string | null): Array<[string, string]> {
+    return value === null ? [] : [[label, value]];
+}
 
-    subTitle(doc, "Cobertura por tipo de ativo");
+function rfParameters(profile: ExportRfProfile | null): Array<[string, string]> {
+    if (!profile) return [["Perfil de radiofrequência", "Não informado"]];
+    const unit = (value: number | null, suffix: string, digits = 0) =>
+        value === null ? null : `${formatNumber(value, digits)} ${suffix}`.trim();
+    return [
+        ["Perfil de radiofrequência", profile.nome ?? "-"],
+        ...optional("Modelo do gateway", profile.modelo_gateway),
+        ...optional("Frequência", unit(profile.frequencia_mhz, "MHz", 1)),
+        ...optional("Potência de transmissão", unit(profile.potencia_transmissao_dbm, "dBm", 1)),
+        ...optional("Sensibilidade de recepção", unit(profile.sensibilidade_recepcao_dbm, "dBm", 1)),
+        ...optional("Alcance estimado", unit(profile.alcance_estimado_m, "m")),
+        ...optional("Altura do gateway", unit(profile.altura_gateway_m, "m", 1)),
+        ...optional("Altura do dispositivo", unit(profile.altura_dispositivo_m, "m", 1)),
+        ...optional("Capacidade por gateway", unit(profile.capacidade_max_equipamentos, "equipamentos")),
+        ...optional("Quantidade de canais", unit(profile.quantidade_canais, "")),
+        ...optional("Custo estimado por gateway", profile.custo_estimado_gateway === null ? null : formatCurrency(profile.custo_estimado_gateway)),
+    ];
+}
+
+function criterionParameters(criterion: ExportCriterion | null): Array<[string, string]> {
+    if (!criterion) return [["Critério de instalação", "Nenhum critério associado"]];
+    const unit = (value: number | null, suffix: string) =>
+        value === null ? null : `${formatNumber(value, 0)} ${suffix}`.trim();
+    return [
+        ["Critério de instalação", criterion.nome ?? "-"],
+        ...optional("Distância mínima aos ativos", unit(criterion.distancia_minima_ativos_m, "m")),
+        ...optional("Distância máxima aos ativos", unit(criterion.distancia_maxima_ativos_m, "m")),
+        ...optional("Altura mínima", unit(criterion.altura_minima_m, "m")),
+        ...optional("Limite de gateways", unit(criterion.limite_gateways, "")),
+        ...optional("Custo máximo", criterion.custo_maximo === null ? null : formatCurrency(criterion.custo_maximo)),
+    ];
+}
+
+function categoriesTable(doc: Doc, scenario: ExportScenario): void {
     table(doc, [
         { header: "Tipo de ativo", width: 4 },
         { header: "Total", width: 2, align: "right" },
@@ -218,8 +274,9 @@ function scenarioDetails(doc: Doc, scenario: ExportScenario): void {
         formatNumber(category.nao_atendidos),
         formatPercent(category.total > 0 ? Math.round((category.atendidos / category.total) * 1000) / 10 : 0),
     ]));
+}
 
-    subTitle(doc, `Gateways (${formatNumber(scenario.gateways.length)})`);
+function gatewaysTable(doc: Doc, scenario: ExportScenario): void {
     table(doc, [
         { header: "#", width: 0.5, align: "right" },
         { header: "Identificação", width: 3 },
@@ -239,7 +296,9 @@ function scenarioDetails(doc: Doc, scenario: ExportScenario): void {
         formatPercent(gateway.capacidade_utilizada_pct),
         gateway.alcance_medio_m === null ? "-" : `${formatNumber(gateway.alcance_medio_m)} m`,
     ]), "Nenhum gateway foi recomendado neste cenário.");
+}
 
+function assetTables(doc: Doc, scenario: ExportScenario): void {
     subTitle(doc, `Ativos atendidos (${formatNumber(scenario.ativos_atendidos.length)})`);
     table(doc, [
         { header: "Identificação", width: 2.6 },
@@ -273,24 +332,97 @@ function scenarioDetails(doc: Doc, scenario: ExportScenario): void {
     ]), "Todos os ativos de interesse foram atendidos.");
 }
 
-function header(doc: Doc, report: StudyExportReport): void {
-    const width = contentWidth(doc);
-    doc.rect(0, 0, doc.page.width, 92).fill(COLORS.primary);
-    doc.font("Helvetica").fontSize(10).fillColor("#C9D6E3")
-        .text("Relatório de planejamento de cobertura", MARGIN, 26, { width });
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#FFFFFF")
-        .text(report.estudo.nome, MARGIN, 42, { width, height: 24, ellipsis: true });
-    doc.font("Helvetica").fontSize(9).fillColor("#C9D6E3")
-        .text(`Gerado em ${formatDate(report.gerado_em)}`, MARGIN, 68, { width });
-    doc.y = 110;
+function scenarioBlock(doc: Doc, scenario: ExportScenario): void {
+    keyValues(doc, [
+        ["Cenário", `${scenario.rotulo} - ${scenario.nome}`],
+        ...(scenario.descricao ? [["Descrição", scenario.descricao] as [string, string]] : []),
+        ["Perfil RF", scenario.nome_perfil_rf ?? "-"],
+        ["Capacidade por gateway", scenario.capacidade_max_equipamentos !== null
+            ? `${formatNumber(scenario.capacidade_max_equipamentos)} equipamentos` : "Não informada"],
+        ["Custo total estimado", formatCurrency(scenario.indicadores.custo_total_estimado)],
+        ["Processado em", formatDate(scenario.executado_em)],
+    ]);
+    doc.moveDown(0.4);
+    scenarioIndicators(doc, scenario);
+    subTitle(doc, "Mapa geográfico");
+    mapSection(doc, scenario);
+    subTitle(doc, "Cobertura por tipo de ativo");
+    categoriesTable(doc, scenario);
+    subTitle(doc, `Gateways propostos (${formatNumber(scenario.gateways.length)})`);
+    gatewaysTable(doc, scenario);
+    assetTables(doc, scenario);
 }
 
-function footer(doc: Doc, report: StudyExportReport): void {
+function paragraph(doc: Doc, text: string): void {
+    doc.font("Helvetica").fontSize(10).fillColor(COLORS.text);
+    ensureSpace(doc, doc.heightOfString(text, { width: contentWidth(doc) }) + 6);
+    doc.text(text, MARGIN, doc.y, { width: contentWidth(doc) });
+    doc.moveDown(0.5);
+}
+
+function finalConsiderations(doc: Doc, report: StudyExportReport): void {
+    const main = report.cenario_selecionado;
+    const { indicadores } = main;
+    paragraph(doc, `No estudo "${report.estudo.nome}", o cenário ${main.rotulo} (${main.nome}) utiliza `
+        + `${formatNumber(indicadores.quantidade_gateways)} gateway(s) e atende ${formatNumber(indicadores.pontos_cobertos)} de `
+        + `${formatNumber(indicadores.pontos_interesse)} ativos de interesse (${formatPercent(indicadores.percentual_cobertura)} de cobertura).`);
+
+    const pending = main.por_categoria.filter((category) => category.nao_atendidos > 0);
+    if (pending.length > 0) {
+        paragraph(doc, "Ativos sem cobertura por tipo: "
+            + pending.map((category) => `${category.tipo_ativo} (${formatNumber(category.nao_atendidos)})`).join("; ") + ".");
+    } else if (indicadores.pontos_interesse > 0) {
+        paragraph(doc, "Todos os ativos de interesse foram atendidos neste cenário.");
+    }
+    if (indicadores.capacidade_utilizada_media_pct !== null) {
+        paragraph(doc, `A utilização média da capacidade dos gateways é de ${formatPercent(indicadores.capacidade_utilizada_media_pct)}.`);
+    }
+
+    const all = [main, ...report.outros_cenarios];
+    if (all.length > 1) {
+        const bestCoverage = Math.max(...all.map((scenario) => scenario.indicadores.percentual_cobertura));
+        const fewest = Math.min(...all.map((scenario) => scenario.indicadores.quantidade_gateways));
+        const names = (predicate: (scenario: ExportScenario) => boolean) =>
+            all.filter(predicate).map((scenario) => scenario.rotulo).join(", ");
+        paragraph(doc, `Entre os ${all.length} cenários comparados, a maior cobertura (${formatPercent(bestCoverage)}) é de: `
+            + `${names((scenario) => scenario.indicadores.percentual_cobertura === bestCoverage)}; o menor número de gateways `
+            + `(${formatNumber(fewest)}) é de: ${names((scenario) => scenario.indicadores.quantidade_gateways === fewest)}.`);
+    }
+    doc.font("Helvetica-Oblique").fontSize(8.5).fillColor(COLORS.muted)
+        .text("Os resultados refletem os dados processados na aplicação na data de geração deste relatório.",
+            MARGIN, doc.y, { width: contentWidth(doc) });
+}
+
+function header(doc: Doc, report: StudyExportReport): void {
+    const width = contentWidth(doc);
+    doc.rect(0, 0, doc.page.width, 100).fill(COLORS.primary);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(COLORS.gateway)
+        .text("GEOMASH", MARGIN, 22, { width, characterSpacing: 1.5 });
+    doc.font("Helvetica").fontSize(10).fillColor("#C9D6E3")
+        .text("Relatório de planejamento de cobertura", MARGIN, 36, { width });
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#FFFFFF")
+        .text(report.estudo.nome, MARGIN, 52, { width, height: 24, ellipsis: true });
+    doc.font("Helvetica").fontSize(9).fillColor("#C9D6E3")
+        .text(`Estudo nº ${report.estudo.id_estudo} · Gerado em ${formatDate(report.gerado_em)}`, MARGIN, 78, { width });
+    doc.y = 118;
+}
+
+function pageDecorations(doc: Doc, report: StudyExportReport): void {
     const range = doc.bufferedPageRange();
     for (let index = range.start; index < range.start + range.count; index += 1) {
         doc.switchToPage(index);
         const bottom = doc.page.margins.bottom;
+        const top = doc.page.margins.top;
         doc.page.margins.bottom = 0;
+        doc.page.margins.top = 0;
+        if (index > range.start) {
+            doc.font("Helvetica-Bold").fontSize(8).fillColor(COLORS.primary)
+                .text("GEOMASH", MARGIN, 20, { width: 60, lineBreak: false });
+            doc.font("Helvetica").fontSize(8).fillColor(COLORS.muted)
+                .text(`Estudo nº ${report.estudo.id_estudo} · ${report.estudo.nome}`, MARGIN + 60, 20,
+                    { width: contentWidth(doc) - 60, align: "right", lineBreak: false, ellipsis: true });
+            doc.moveTo(MARGIN, 32).lineTo(MARGIN + contentWidth(doc), 32).lineWidth(0.5).strokeColor(COLORS.border).stroke();
+        }
         const y = doc.page.height - MARGIN + 8;
         doc.font("Helvetica").fontSize(8).fillColor(COLORS.muted)
             .text(`${report.estudo.nome} · gerado em ${formatDate(report.gerado_em)}`, MARGIN, y,
@@ -298,6 +430,7 @@ function footer(doc: Doc, report: StudyExportReport): void {
             .text(`Página ${index - range.start + 1} de ${range.count}`, MARGIN, y,
                 { width: contentWidth(doc), align: "right", lineBreak: false });
         doc.page.margins.bottom = bottom;
+        doc.page.margins.top = top;
     }
 }
 
@@ -320,31 +453,57 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
         doc.on("error", reject);
 
         try {
-            const { estudo, cenario_final: finalScenario, alternativas } = report;
+            const { estudo, cenario_selecionado: main, outros_cenarios: others } = report;
             header(doc, report);
 
-            sectionTitle(doc, "Identificação do estudo");
+            sectionTitle(doc, "1. Identificação do estudo");
             keyValues(doc, [
                 ["Nome do estudo", estudo.nome],
-                ...(estudo.descricao ? [["Descrição", estudo.descricao] as [string, string]] : []),
+                ["Identificador", String(estudo.id_estudo)],
                 ["Região analisada", estudo.regiao],
-                ...(estudo.versao_bdgd ? [["Versão BDGD", estudo.versao_bdgd] as [string, string]] : []),
-                ["Perfil RF", estudo.nome_perfil_rf ?? "-"],
-                ["Critério de instalação", estudo.nome_criterio_instalacao ?? "-"],
+                ...optional("Distribuidora", estudo.distribuidora),
+                ...(estudo.descricao ? [["Descrição", estudo.descricao] as [string, string]] : []),
+                ...optional("Versão BDGD", estudo.versao_bdgd),
+                ["Cenário exibido", `${main.rotulo} - ${main.nome}`],
                 ["Criado em", formatDate(estudo.criado_em)],
                 ["Data de geração", formatDate(report.gerado_em)],
             ]);
 
-            if (report.imagem_mapa) {
-                sectionTitle(doc, "Local do estudo");
-                mapImage(doc, report.imagem_mapa);
-            }
+            sectionTitle(doc, "2. Informações gerais");
+            keyValues(doc, [...rfParameters(main.perfil_rf), ...criterionParameters(main.criterio)]);
 
-            if (alternativas.length > 0) {
-                const all = [finalScenario, ...alternativas];
-                sectionTitle(doc, "Comparativo das alternativas de implantação");
+            sectionTitle(doc, `3. Resumo dos resultados - ${main.rotulo}`);
+            scenarioIndicators(doc, main);
+            keyValues(doc, [["Custo total estimado", formatCurrency(main.indicadores.custo_total_estimado)]]);
+
+            sectionTitle(doc, "4. Mapa geográfico");
+            mapSection(doc, main);
+
+            sectionTitle(doc, `5. Gateways propostos (${formatNumber(main.gateways.length)})`);
+            gatewaysTable(doc, main);
+
+            sectionTitle(doc, "6. Ativos elétricos");
+            subTitle(doc, "Cobertura por tipo de ativo");
+            categoriesTable(doc, main);
+            assetTables(doc, main);
+
+            let number = 7;
+            if (others.length > 0) {
+                doc.addPage();
+                sectionTitle(doc, `${number}. Demais cenários do estudo`);
+                number += 1;
+                others.forEach((scenario, index) => {
+                    if (index > 0) doc.addPage();
+                    subTitle(doc, `${scenario.rotulo} - ${scenario.nome}`);
+                    scenarioBlock(doc, scenario);
+                });
+
+                const all = [main, ...others].sort((a, b) =>
+                    Number(b.otimizado) - Number(a.otimizado) || a.id_cenario - b.id_cenario);
+                sectionTitle(doc, `${number}. Comparativo entre cenários`);
+                number += 1;
                 table(doc, [
-                    { header: "Alternativa", width: 3.6 },
+                    { header: "Cenário", width: 3.6 },
                     { header: "Gateways", width: 1.5, align: "right" },
                     { header: "Cobertura", width: 1.6, align: "right" },
                     { header: "Atendidos", width: 1.6, align: "right" },
@@ -352,7 +511,7 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
                     { header: "Capacidade média", width: 1.9, align: "right" },
                     { header: "Custo estimado", width: 2.2, align: "right" },
                 ], all.map((scenario) => [
-                    scenario.final ? `${scenario.nome} (final)` : scenario.nome,
+                    `${scenario.rotulo} - ${scenario.nome}${scenario.selecionado ? " (exibido)" : ""}`,
                     formatNumber(scenario.indicadores.quantidade_gateways),
                     formatPercent(scenario.indicadores.percentual_cobertura),
                     formatNumber(scenario.indicadores.pontos_cobertos),
@@ -362,17 +521,10 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
                 ]));
             }
 
-            sectionTitle(doc, `Alternativa final: ${finalScenario.nome}`);
-            scenarioDetails(doc, finalScenario);
+            sectionTitle(doc, `${number}. Considerações finais`);
+            finalConsiderations(doc, report);
 
-            for (const [index, scenario] of alternativas.entries()) {
-                doc.addPage();
-                doc.y = MARGIN;
-                sectionTitle(doc, `Alternativa ${index + 2}: ${scenario.nome}`);
-                scenarioDetails(doc, scenario);
-            }
-
-            footer(doc, report);
+            pageDecorations(doc, report);
             doc.end();
         } catch (error) {
             reject(error);

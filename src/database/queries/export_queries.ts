@@ -13,15 +13,30 @@ export const findExportStudyQuery = `
 
 export const findExportScenariosQuery = `
     SELECT
-        c.id_cenario, c.nome, c.descricao, c.status,
+        c.id_cenario, c.id_cenario_base, c.nome, c.descricao, c.objetivo, c.status,
         c.quantidade_gateways, c.pontos_interesse, c.pontos_cobertos,
         c.pontos_nao_cobertos, c.percentual_cobertura,
         c.capacidade_utilizada_media_pct, c.custo_total_estimado,
         c.executado_em, c.criado_em,
         p.nome AS nome_perfil_rf,
-        p.capacidade_max_equipamentos
+        p.capacidade_max_equipamentos, p.modelo_gateway,
+        p.frequencia_mhz::float8 AS frequencia_mhz,
+        p.potencia_transmissao_dbm::float8 AS potencia_transmissao_dbm,
+        p.sensibilidade_recepcao_dbm::float8 AS sensibilidade_recepcao_dbm,
+        p.alcance_estimado_m::float8 AS alcance_estimado_m,
+        p.altura_gateway_m::float8 AS altura_gateway_m,
+        p.altura_dispositivo_m::float8 AS altura_dispositivo_m,
+        p.quantidade_canais,
+        p.custo_estimado_gateway::float8 AS custo_estimado_gateway,
+        ci.nome AS nome_criterio_instalacao,
+        ci.distancia_minima_ativos_m::float8 AS distancia_minima_ativos_m,
+        ci.distancia_maxima_ativos_m::float8 AS distancia_maxima_ativos_m,
+        ci.altura_minima_m::float8 AS altura_minima_m,
+        ci.limite_gateways,
+        ci.custo_maximo::float8 AS custo_maximo
     FROM cenarios c
     LEFT JOIN perfis_rf p ON p.id_perfil_rf = c.id_perfil_rf
+    LEFT JOIN criterios_instalacao ci ON ci.id_criterio_instalacao = c.id_criterio_instalacao
     WHERE c.id_estudo = $1 AND c.executado_em IS NOT NULL
     ORDER BY c.id_cenario
 `;

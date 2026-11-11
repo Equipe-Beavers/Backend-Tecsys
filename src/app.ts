@@ -11,7 +11,7 @@ import { InstallCriterionController } from "./controllers/InstallCriterionContro
 import { RFController } from "./controllers/RFController.js";
 import { RecommendationController } from "./controllers/RecommendationController.js";
 import { StudyExportController } from "./controllers/StudyExportController.js";
-import { studyExportBodySchema } from "./modules/study-export.schema.js";
+import { STUDY_EXPORT_BODY_LIMIT, studyExportBodySchema } from "./modules/study-export.schema.js";
 import { ativoRoutes } from "./modules/ativo.routes.js";
 import { regioesRoutes } from "./modules/regioes.routes.js";
 import { antenasRoutes } from "./modules/antenas.routes.js";
@@ -140,7 +140,7 @@ export class App {
     });
 
     this.app.post("/estudos/:id/exportar-pdf", {
-      bodyLimit: 15 * 1024 * 1024,
+      bodyLimit: STUDY_EXPORT_BODY_LIMIT,
       schema: { params: studyParams, body: studyExportBodySchema },
     }, async (request, reply) => {
       return studyExportController.ExportStudyPdf(
