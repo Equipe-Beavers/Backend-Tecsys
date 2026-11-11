@@ -22,6 +22,7 @@ export class RecommendationController {
     async GenerateRecommendation(request: FastifyRequest<{Params: RecomendarParams, Body: RecomendarBody}>, reply: FastifyReply) {
         try {
              const data = await this.recommendationService.generateRecommendation({
+                id_usuario: Number(request.user.sub),
                 id_estudo: request.params.id,
                 id_perfil_rf: request.body.id_perfil_rf,
                 id_criterio_instalacao: request.body.id_criterio_instalacao ?? null,
@@ -30,8 +31,11 @@ export class RecommendationController {
 
              return reply.status(201).send(data);
         } catch (error: any) {
-            return reply.status(400).send({
-                message: error.message || "Erro inesperado ao gerar recomendação."
+            const message = error instanceof Error ? error.message : "Erro inesperado ao gerar recomendação.";
+            const missingPoints = message.includes("não possui pontos marcados");
+            return reply.status(missingPoints ? 422 : 400).send({
+                code: missingPoints ? "STUDY_POINTS_REQUIRED" : "RECOMMENDATION_ERROR",
+                message
             })
         }
     }

@@ -70,19 +70,5 @@ export class InstallCriterionValidation {
         this.fail("A altitude mínima não pode ultrapassar a altitude máxima.");
       }
     }
-    const vegetation = this.object(input.vegetacoes, "Vegetação");
-    if (vegetation) this.disjoint(this.list(vegetation.permitidas, "Vegetação permitida"), this.list(vegetation.proibidas, "Vegetação proibida"), "Vegetação");
-    for (const [label, value, fields] of [
-      ["Edificações", input.edificacoes, ["raio_analise_m", "altura_maxima_m", "distancia_minima_m"]],
-      ["Antenas", input.antenas, ["raio_analise_m", "distancia_maxima_m"]],
-    ] as const) {
-      const section = this.object(value, label);
-      if (!section) continue;
-      for (const field of fields) this.number(section, field, label, 0);
-      this.number(section, "quantidade_maxima", label, 1, 2147483647, true);
-      if (label === "Antenas" && section.considerar_conflito_frequencia != null && typeof section.considerar_conflito_frequencia !== "boolean") {
-        this.fail("Antenas.considerar_conflito_frequencia deve ser booleano ou null.");
-      }
-    }
   }
 }

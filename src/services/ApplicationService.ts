@@ -34,9 +34,9 @@ export class ApplicationService {
 
         const setClause = keys.map((key, index) => `${key} = $${index + 1}`).join(", ");
         const query = `
-            UPDATE ${table} 
-            SET ${setClause} 
-            WHERE ${columnId} = $${keys.length + 1} 
+            UPDATE ${table}
+            SET ${setClause}
+            WHERE ${columnId} = $${keys.length + 1}
             RETURNING *;
         `;
 

@@ -30,27 +30,27 @@ export class ActiveUtils {
       }
       return parsed;
   }
-  
+
   parseTypes(value: string | undefined): AssetType[] | undefined {
       if (!value) return undefined;
       const types = value.split(",").map((type) => type.trim().toUpperCase());
       if (types.length === 0 || types.some((type) => !assetTypes.includes(type as AssetType))) {
           throw new Error(`Tipos inválidos. Valores permitidos: ${assetTypes.join(", ")}.`);
       }
-  
+
       return types as AssetType[];
   }
-  
+
   parseLimit(value: string | undefined): number {
       if (value === undefined) return 500;
       const limit = Number(value);
       if (!Number.isInteger(limit) || limit < 1 || limit > 5000) {
           throw new Error("Parâmetro 'limit' deve ser um inteiro entre 1 e 5000.");
       }
-  
+
       return limit;
   }
-  
+
   parseDeviceTypeIds(value: string | undefined): number[] | undefined {
       if (!value) return undefined;
       const ids = value.split(",").map((item) => Number(item.trim()));
@@ -62,7 +62,7 @@ export class ActiveUtils {
       }
       return ids;
   }
-  
+
   parseDistributors(value: string | undefined): string[] | undefined {
       if (!value) return undefined;
       const values = value.split(",").map((item) => item.trim());
@@ -71,5 +71,5 @@ export class ActiveUtils {
       }
       return values;
   }
-  
+
 }

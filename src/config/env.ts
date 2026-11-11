@@ -25,6 +25,11 @@ export const env = {
         host: optional("DB_HOST", "localhost"),
         port: Number(optional("DB_PORT", "5432")),
         ssl: process.env.DB_SSL?.toLowerCase() === "true",
+        sslMode: optional(
+            "DB_SSL_MODE",
+            process.env.DB_SSL?.toLowerCase() === "true" ? "require" : "disable",
+        ),
+        sslRootCert: process.env.DB_SSL_ROOT_CERT || undefined,
     },
     port: Number(optional("PORT", "3000")),
     /** Edificações consultadas sob demanda na Overture Maps  */

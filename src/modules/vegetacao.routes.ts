@@ -5,7 +5,7 @@ import { VegetacaoController } from "../controllers/VegetacaoController.js";
 export async function vegetacaoRoutes(app: FastifyInstance): Promise<void> {
     const controller = new VegetacaoController();
 
-    app.get("/api/vegetacao/config", (request, reply) =>
+    app.get("/vegetacao/config", (request, reply) =>
         controller.GetConfig(request, reply),
     );
 }

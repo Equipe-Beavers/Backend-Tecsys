@@ -11,7 +11,7 @@ export class PropagationController {
 
     async GenerateCoverage(request: FastifyRequest<{ Body: GenerateCoverageDTO }>, reply: FastifyReply) {
         try {
-            const data = await this.propagationService.generateCoverage(request.body);
+            const data = await this.propagationService.generateCoverage(request.body, Number(request.user.sub));
             return reply.status(200).send({ data });
         } catch (error: any) {
             return reply.status(400).send({
@@ -22,7 +22,7 @@ export class PropagationController {
 
     async GetScenarioCoverage(request: FastifyRequest<{ Params: { id: number } }>, reply: FastifyReply) {
         try {
-            const data = await this.propagationService.getScenarioCoverage(request.params.id);
+            const data = await this.propagationService.getScenarioCoverage(request.params.id, Number(request.user.sub));
             return reply.status(200).send({ data });
         } catch (error: any) {
             return reply.status(400).send({

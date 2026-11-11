@@ -26,6 +26,10 @@ export const pool = new Pool({
     port: env.database.port,
     ssl: construirConfiguracaoSsl(),
     max: 10,
+    // Evita que queries lentas ocupem conexões indefinidamente
+    statement_timeout: 45_000,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
 });
 
 export async function closePool(): Promise<void> {

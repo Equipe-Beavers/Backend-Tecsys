@@ -1,6 +1,8 @@
 import fastify from "fastify";
 import cors from "@fastify/cors";
-import { UserController } from "./controllers/UserController.js";
+import jwt from "@fastify/jwt";
+import { authRoutes, jwtConfiguration } from "./modules/auth.routes.js";
+import { registerResourceProtection } from "./modules/resource-protection.js";
 import { StudyController } from "./controllers/StudyController.js";
 import { BuildingController } from "./controllers/BuildingController.js";
 import { PropagationController } from "./controllers/PropagationController.js";
@@ -8,23 +10,31 @@ import { ScenarioController } from "./controllers/ScenarioController.js";
 import { InstallCriterionController } from "./controllers/InstallCriterionController.js";
 import { RFController } from "./controllers/RFController.js";
 import { RecommendationController } from "./controllers/RecommendationController.js";
-import { ActiveController } from "./controllers/ActiveController.js";
-import { RegionsController } from "./controllers/RegionsController.js";
+import { StudyExportController } from "./controllers/StudyExportController.js";
+import { STUDY_EXPORT_BODY_LIMIT, studyExportBodySchema } from "./modules/study-export.schema.js";
 import { ativoRoutes } from "./modules/ativo.routes.js";
 import { regioesRoutes } from "./modules/regioes.routes.js";
+import { antenasRoutes } from "./modules/antenas.routes.js";
+import { emissoesRfRoutes } from "./modules/emissoes-rf.routes.js";
+import { vegetacaoRoutes } from "./modules/vegetacao.routes.js";
 
 export class App {
   public app: fastify.FastifyInstance;
-  constructor() {
-    this.app = fastify({ logger: true, ajv: { customOptions: { removeAdditional: false } } });
-    // Flutter Web development origin; deployments can provide an explicit list.
+  constructor(options: { authSecret?: string } = {}) {
+    this.app = fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.senha"] }, ajv: { customOptions: { removeAdditional: false } } });
+    registerResourceProtection(this.app);
     void this.app.register(cors, {
       origin: process.env.CORS_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean)
         ?? /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     });
-    void this.app.register(regioesRoutes, { prefix: "/api" });
+    void this.app.register(vegetacaoRoutes);
+    void this.app.register(antenasRoutes);
+    void this.app.register(emissoesRfRoutes);
+    void this.app.register(regioesRoutes);
     void this.app.register(ativoRoutes);
+    void this.app.register(jwt, jwtConfiguration(options.authSecret ?? process.env.JWT_SECRET));
+    void this.app.register(authRoutes, { secret: options.authSecret ?? process.env.JWT_SECRET });
     this.routes();
   }
 
@@ -43,25 +53,14 @@ export class App {
   }
 
   routes() {
-    const userController = new UserController();
     const studyController = new StudyController();
     const scenarioController = new ScenarioController();
     const installCriterionController = new InstallCriterionController();
     const rfControler = new RFController();
     const recommendationController = new RecommendationController();
-    const regionsController = new RegionsController();
-    const activeController = new ActiveController();
     const buildingController = new BuildingController();
     const propagationController = new PropagationController();
-    const activeController = new ActiveController();
-    const regionsController = new RegionsController();
-
-    this.app.post("/create-user", async (request, reply) => {
-      await userController.CreateUser(
-        request as Parameters<UserController["CreateUser"]>[0],
-        reply,
-      );
-    });
+    const studyExportController = new StudyExportController();
 
     // ROTAS DE ESTUDO E RECOMENDAÇÃO
     const studyId = { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
@@ -140,6 +139,15 @@ export class App {
       return studyController.DeleteStudy(request as Parameters<StudyController["DeleteStudy"]>[0], reply);
     });
 
+    this.app.post("/estudos/:id/exportar-pdf", {
+      bodyLimit: STUDY_EXPORT_BODY_LIMIT,
+      schema: { params: studyParams, body: studyExportBodySchema },
+    }, async (request, reply) => {
+      return studyExportController.ExportStudyPdf(
+        request as Parameters<StudyExportController["ExportStudyPdf"]>[0], reply,
+      );
+    });
+
     // Compatibilidade com o fluxo da SCRUM-54 enquanto os clientes migram
     // para as rotas REST em /estudos.
     this.app.get("/study", async (request, reply) => {
@@ -165,7 +173,21 @@ export class App {
       );
     });
 
-    this.app.post("/study/:id/recommendation", async (request, reply) => {
+    this.app.post("/study/:id/recommendation", {
+      schema: {
+        params: studyParams,
+        body: {
+          type: "object",
+          required: ["id_perfil_rf"],
+          additionalProperties: false,
+          properties: {
+            id_perfil_rf: studyId,
+            id_criterio_instalacao: { type: ["integer", "null"], minimum: 1 },
+            nome_cenario: { type: "string", minLength: 1, maxLength: 150 },
+          },
+        },
+      },
+    }, async (request, reply) => {
       await recommendationController.GenerateRecommendation(
         request as Parameters<RecommendationController["GenerateRecommendation"]>[0],
         reply
@@ -296,14 +318,10 @@ export class App {
       // JSONB shape is not prescribed by the approved model.
       tipos_elementos_permitidos: {},
       tipos_elementos_proibidos: {},
-      requer_alimentacao_eletrica: { type: ["boolean", "null"] },
       distancia_minima_ativos_m: { type: ["number", "null"], minimum: 10, maximum: 500 },
       distancia_maxima_ativos_m: { type: ["number", "null"], minimum: 10, maximum: 500 },
       limite_gateways: { type: ["integer", "null"], minimum: 1, maximum: 2147483647 },
       relevo: {},
-      vegetacoes: {},
-      edificacoes: {},
-      antenas: {},
     };
     this.app.post("/create-install-criterion", {
       schema: { body: {
@@ -385,10 +403,6 @@ export class App {
       altura_dispositivo_m: { type: ["number", "null"], minimum: 0 },
       capacidade_max_equipamentos: { type: ["integer", "null"] },
       atenuacao_adicional_db: { type: ["number", "null"], minimum: 0 },
-      considera_relevo: { type: "boolean" },
-      considera_vegetacao: { type: "boolean" },
-      considera_edificacoes: { type: "boolean" },
-      considera_antenas: { type: "boolean" },
     };
     const rfProfileProperties = { id_usuario: criterionId, ...rfProfileFields };
     this.app.post("/calculate-rf-range", {
@@ -466,45 +480,6 @@ export class App {
       );
     });
 
-    // Rotas sem prefixo mantidas para o frontend da SCRUM-54. As rotas
-    // equivalentes em /api continuam registradas acima para a develop.
-    this.app.get("/distribuidoras", async (request, reply) => {
-      return regionsController.ListDistributor(
-        request as Parameters<RegionsController["ListDistributor"]>[0], reply,
-      );
-    });
-    this.app.get("/estados", async (request, reply) => {
-      return regionsController.ListStates(
-        request as Parameters<RegionsController["ListStates"]>[0], reply,
-      );
-    });
-    this.app.get("/municipios", async (request, reply) => {
-      return regionsController.ListMunicipios(
-        request as Parameters<RegionsController["ListMunicipios"]>[0], reply,
-      );
-    });
-    this.app.get("/bairros", async (request, reply) => {
-      return regionsController.ListNeighborhood(
-        request as Parameters<RegionsController["ListNeighborhood"]>[0], reply,
-      );
-    });
-    this.app.get("/ativos/distribuidoras", async (request, reply) => {
-      return activeController.FindDistributors(request, reply);
-    });
-    this.app.get("/ativos/tipos-dispositivos", async (request, reply) => {
-      return activeController.FindDeviceTypes(request, reply);
-    });
-    this.app.get("/ativos", async (request, reply) => {
-      return activeController.FindAssets(
-        request as Parameters<ActiveController["FindAssets"]>[0], reply,
-      );
-    });
-    this.app.get("/ativos/:id", async (request, reply) => {
-      return activeController.FindAssetById(
-        request as Parameters<ActiveController["FindAssetById"]>[0], reply,
-      );
-    });
-
     const validateNoUnexpectedProperties = (body: Record<string, unknown>, allowed: string[], reply: any) => {
       const extras = Object.keys(body).filter((key) => !allowed.includes(key));
       if (extras.length > 0) {
@@ -514,24 +489,6 @@ export class App {
     };
 
     // ROTAS DE CRUD/VALIDAÇÃO UTILIZADAS PELOS TESTES
-    this.app.post("/usuarios", async (request, reply) => {
-      const body = request.body as Record<string, unknown>;
-      const allowed = ["username", "email", "senha_hash"];
-      const missing = allowed.filter((key) => !(key in body));
-      if (missing.length > 0 || Object.keys(body).some((key) => !allowed.includes(key))) {
-        return reply.status(400).send({ code: "FST_ERR_VALIDATION", message: "Dados inválidos" });
-      }
-
-      for (const key of ["username", "email", "senha_hash"]) {
-        const value = body[key];
-        if (typeof value !== "string" || value.trim() === "") {
-          return reply.status(400).send({ code: "FST_ERR_VALIDATION", message: "Dados inválidos" });
-        }
-      }
-
-      return reply.status(201).send({ message: "Usuário criado com sucesso" });
-    });
-
     this.app.post("/estudos/:id/pontos", {
       schema: {
         params: {
@@ -566,7 +523,7 @@ export class App {
           erro: "O estudo da URL deve ser igual ao estudo informado no corpo",
         });
       }
-      return reply.status(201).send({ message: "Ponto do estudo criado com sucesso" });
+      return studyController.CreateStudyPoint(request as Parameters<StudyController["CreateStudyPoint"]>[0], reply);
     });
 
     this.app.post("/cenarios", {
@@ -584,8 +541,8 @@ export class App {
           },
         },
       },
-    }, async (_request, reply) => {
-      return reply.status(201).send({ message: "Cenário criado com sucesso" });
+    }, async (request, reply) => {
+      return scenarioController.CreateScneario(request as Parameters<ScenarioController["CreateScneario"]>[0], reply);
     });
 
     this.app.post("/criterios-instalacao", {
@@ -605,7 +562,7 @@ export class App {
       const body = request.body as Record<string, unknown>;
       const validation = validateNoUnexpectedProperties(body, ["id_usuario", "nome", "tipos_elementos_permitidos"], reply);
       if (validation) return validation;
-      return reply.status(201).send({ message: "Critério de instalação criado com sucesso" });
+      return installCriterionController.CreateInstallCriterion(request as Parameters<InstallCriterionController["CreateInstallCriterion"]>[0], reply);
     });
 
     this.app.post("/cenario-gateways", {
@@ -625,7 +582,7 @@ export class App {
       const body = request.body as Record<string, unknown>;
       const validation = validateNoUnexpectedProperties(body, ["id_cenario", "id_estudo_ponto", "capacidade_utilizada_pct"], reply);
       if (validation) return validation;
-      return reply.status(201).send({ message: "Gateway do cenário criado com sucesso" });
+      return scenarioController.CreateGatewayScenario(request as Parameters<ScenarioController["CreateGatewayScenario"]>[0], reply);
     });
 
     this.app.post("/cenario-atendimentos", {
@@ -645,7 +602,7 @@ export class App {
       const body = request.body as Record<string, unknown>;
       const validation = validateNoUnexpectedProperties(body, ["id_cenario_gateway", "id_estudo_ponto", "distancia_m"], reply);
       if (validation) return validation;
-      return reply.status(201).send({ message: "Atendimento do cenário criado com sucesso" });
+      return scenarioController.CreateServiceScenario(request as Parameters<ScenarioController["CreateServiceScenario"]>[0], reply);
     });
 
     this.app.post("/perfis-rf", {
@@ -671,7 +628,7 @@ export class App {
       if (body.parametros_adicionais !== undefined && body.parametros_adicionais !== null && typeof body.parametros_adicionais !== "object") {
         return reply.status(400).send({ code: "FST_ERR_VALIDATION", message: "parametros_adicionais deve ser um objeto ou nulo" });
       }
-      return reply.status(201).send({ message: "Perfil RF criado com sucesso" });
+      return rfControler.CreateRFProfile(request as Parameters<RFController["CreateRFProfile"]>[0], reply);
     });
 
   }

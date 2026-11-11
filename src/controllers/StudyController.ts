@@ -28,7 +28,7 @@ export class StudyController {
 
     async ListStudies(request: FastifyRequest<{ Querystring: { id_usuario?: number } }>, reply: FastifyReply) {
         try {
-            const studies = await this.studyService.listStudies(request.query.id_usuario);
+            const studies = await this.studyService.listStudies(Number(request.user.sub));
             return reply.send({ estudos: studies });
         } catch (error: unknown) {
             request.log.error(error);
@@ -44,7 +44,7 @@ export class StudyController {
 
     async GetStudy(request: FastifyRequest<{ Params: { id: number } }>, reply: FastifyReply) {
         try {
-            return reply.send({ estudo: await this.studyService.getStudy(request.params.id) });
+            return reply.send({ estudo: await this.studyService.getStudy(request.params.id, Number(request.user.sub)) });
         } catch (error) {
             return this.HandleError(error, request, reply);
         }
@@ -52,7 +52,7 @@ export class StudyController {
 
     async UpdateStudy(request: FastifyRequest<{ Params: { id: number }; Body: UpdateStudyDTO }>, reply: FastifyReply) {
         try {
-            return reply.send({ estudo: await this.studyService.updateStudy(request.params.id, request.body) });
+            return reply.send({ estudo: await this.studyService.updateStudy(request.params.id, request.body, Number(request.user.sub)) });
         } catch (error) {
             return this.HandleError(error, request, reply);
         }
@@ -60,7 +60,7 @@ export class StudyController {
 
     async DeleteStudy(request: FastifyRequest<{ Params: { id: number } }>, reply: FastifyReply) {
         try {
-            await this.studyService.deleteStudy(request.params.id);
+            await this.studyService.deleteStudy(request.params.id, Number(request.user.sub));
             return reply.status(204).send();
         } catch (error) {
             return this.HandleError(error, request, reply);
