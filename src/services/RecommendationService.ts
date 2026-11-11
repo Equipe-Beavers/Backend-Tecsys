@@ -6,6 +6,8 @@ import { PropagationService } from "./PropagationService.js";
 import { ScenarioService } from "./ScenarioService.js";
 import type { BuildingsAround } from "./BuildingService.js";
 import type { Coverage } from "../interface/PropagationDTO.js";
+import type { InstallCriterionDTO } from "../interface/InstallCriterionDTO.js";
+import { EnvironmentalService } from "./EnvironmentalService.js";
 
 export interface GerarRecomendacaoInput {
   id_estudo: number;
@@ -18,16 +20,18 @@ export class RecommendationService {
   private recommendationUtils: RecommendationUtils;
   private propagationService: PropagationService;
   private scenarioService: ScenarioService;
+  private environmentalService: EnvironmentalService;
 
   constructor() {
     this.recommendationUtils = new RecommendationUtils();
     this.propagationService = new PropagationService();
     this.scenarioService = new ScenarioService();
+    this.environmentalService = new EnvironmentalService();
   }
 
   async generateRecommendation(input: GerarRecomendacaoInput) {
     const studyResult = await pool.query(
-      "SELECT id_estudo FROM estudos WHERE id_estudo = $1",
+      "SELECT id_estudo, id_criterio_instalacao FROM estudos WHERE id_estudo = $1",
       [input.id_estudo]
     );
     const study = studyResult.rows[0];
@@ -47,6 +51,17 @@ export class RecommendationService {
     const points = pointsResult.rows;
 
     const allPoints = (points ?? []) as EstudoPonto[];
+    const criterionId = input.id_criterio_instalacao ??
+      (study.id_criterio_instalacao == null ? null : Number(study.id_criterio_instalacao));
+    let criterion: InstallCriterionDTO | null = null;
+    if (criterionId != null) {
+      const selected = await pool.query(
+        "SELECT * FROM criterios_instalacao WHERE id_criterio_instalacao = $1 AND id_usuario = (SELECT id_usuario FROM estudos WHERE id_estudo = $2)",
+        [criterionId, input.id_estudo],
+      );
+      if (!selected.rows[0]) throw new Error("Critério de instalação não encontrado.");
+      criterion = selected.rows[0] as InstallCriterionDTO;
+    }
     const candidates = allPoints.filter(
       (p) => p.papel === "candidato" || p.papel === "ambos",
     );
@@ -64,6 +79,7 @@ export class RecommendationService {
       );
 
     const params = this.propagationService.buildParameters(rf as PerfilRf);
+    const environmental = await this.environmentalService.prepare(allPoints);
     const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
     const propagationPoints = interestPoints.map((p) => ({
       id: String(p.id_estudo_ponto),
@@ -71,14 +87,30 @@ export class RecommendationService {
       longitude: Number(p.longitude),
     }));
     const coverage = new Map<number, AtendimentoCalculado[]>();
-    const failedBuildings = new Map<number, BuildingsAround>();
+    const buildingsByCandidate = new Map<number, BuildingsAround | null>();
+    const eligibleCandidates: EstudoPonto[] = [];
+    const siteBonuses = new Map<number, number>();
+    let buildingsAvailable = 0;
+    let buildingsMissing = 0;
 
     for (const candidate of candidates) {
       const gateway = { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) };
       const buildings = await this.propagationService.loadBuildings(params, gateway.latitude, gateway.longitude);
-      if (buildings?.error) failedBuildings.set(candidate.id_estudo_ponto, buildings);
+      buildingsByCandidate.set(candidate.id_estudo_ponto, buildings);
+      if (buildings?.index) buildingsAvailable++;
+      else buildingsMissing++;
+      const decision = environmental.checkCandidate(candidate, criterion, interestPoints, buildings);
+      if (!decision.eligible) {
+        environmental.summary.candidatos_excluidos.push({
+          id_estudo_ponto: candidate.id_estudo_ponto,
+          motivos: decision.reasons,
+        });
+        continue;
+      }
+      eligibleCandidates.push(candidate);
+      if (decision.bonus > 0) siteBonuses.set(candidate.id_estudo_ponto, decision.bonus);
 
-      const links = await this.propagationService.calculateLinks(gateway, propagationPoints, params, buildings);
+      const links = await this.propagationService.calculateLinks(gateway, propagationPoints, params, buildings, environmental);
       coverage.set(
         candidate.id_estudo_ponto,
         [...links.entries()]
@@ -90,12 +122,20 @@ export class RecommendationService {
           })),
       );
     }
+    environmental.summary.fontes.edificacoes = buildingsAvailable
+      ? buildingsMissing ? "parcial" : "disponivel"
+      : "indisponivel";
+    if (!eligibleCandidates.length) {
+      throw new Error("Nenhum candidato elegível após aplicar os critérios ambientais e de instalação.");
+    }
 
     const result = this.recommendationUtils.CalculateRecommendation(
-      candidates,
+      eligibleCandidates,
       interestPoints,
       rf as PerfilRf,
       coverage,
+      siteBonuses,
+      criterion?.limite_gateways ?? Infinity,
     );
 
     const totalInterest = interestPoints.length;
@@ -106,7 +146,7 @@ export class RecommendationService {
     const scenario = await this.scenarioService.createScenario({
       id_estudo: input.id_estudo,
       id_perfil_rf: input.id_perfil_rf,
-      id_criterio_instalacao: input.id_criterio_instalacao ?? null,
+      id_criterio_instalacao: criterionId,
       nome:
         input.nome_cenario ??
         `Recomendação inicial - estudo ${input.id_estudo}`,
@@ -146,8 +186,9 @@ export class RecommendationService {
           Number(gw.candidato.latitude),
           Number(gw.candidato.longitude),
           params,
-          undefined,
-          failedBuildings.get(gw.candidato.id_estudo_ponto),
+          120, // mancha com amostragem ambiental; menos raios que o modo puramente geometrico
+          buildingsByCandidate.get(gw.candidato.id_estudo_ponto) ?? null,
+          environmental,
         );
         await this.propagationService.saveGatewayCoverage(scenarioGateway.id_cenario_gateway, gatewayCoverage, params);
         coverageByGateway.set(gw.candidato.id_estudo_ponto, gatewayCoverage);
@@ -173,6 +214,7 @@ export class RecommendationService {
       ([tipo, total]) => ({
         tipo_ativo: tipo,
         total,
+        cobertos: total - (notCoveredByType.get(tipo) ?? 0),
         nao_cobertos: notCoveredByType.get(tipo) ?? 0,
       }),
     ).sort((a, b) => b.total - a.total);
@@ -186,6 +228,7 @@ export class RecommendationService {
         pontos_cobertos: totalCovered,
         pontos_nao_cobertos: result.pontosNaoCobertos.length,
         por_categoria: byCategory,
+        analise_ambiental: environmental.summary,
         mancha_consolidada: consolidatedCoverage,
         ativos_mapa: interestPoints.map((point) => {
           const gateway = result.gateways.find((item) =>

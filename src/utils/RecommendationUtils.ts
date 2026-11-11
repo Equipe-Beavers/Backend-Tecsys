@@ -85,6 +85,8 @@ export class RecommendationUtils {
     interestPoint: EstudoPonto[],
     RFProfile: PerfilRf,
     coverage: Map<number, AtendimentoCalculado[]>,
+    siteBonuses: Map<number, number> = new Map(),
+    maxGateways = Infinity,
   ): ResultadoCalculo {
     const capability = RFProfile.capacidade_max_equipamentos ?? Infinity;
     const pending = new Map(interestPoint.map((p) => [p.id_estudo_ponto, p]));
@@ -92,7 +94,7 @@ export class RecommendationUtils {
     const gateways: GatewayCalculado[] = [];
     let rest = [...candidates];
 
-    while (pending.size > 0 && rest.length > 0) {
+    while (pending.size > 0 && rest.length > 0 && gateways.length < maxGateways) {
         let best: {candidate: EstudoPonto;  covered: AtendimentoCalculado[]; score: number} | null = null;
         for (const c of rest) {
             const possibilities = (coverage.get(c.id_estudo_ponto) ?? []).filter(
@@ -102,7 +104,8 @@ export class RecommendationUtils {
                 (a, b) => (WEIGHT_PRIORIRY[b.ponto.prioridade ?? "normal"] ?? 1) - (WEIGHT_PRIORIRY[a.ponto.prioridade ?? "normal"] ?? 1)
             );
             const covered = capability === Infinity ? ordinated : ordinated.slice(0, capability);
-            const score = covered.reduce((s, a) => s + (WEIGHT_PRIORIRY[a.ponto.prioridade ?? "normal"] ?? 1), 0);
+            const score = covered.reduce((s, a) => s + (WEIGHT_PRIORIRY[a.ponto.prioridade ?? "normal"] ?? 1), 0)
+                + (covered.length ? (siteBonuses.get(c.id_estudo_ponto) ?? 0) : 0);
             if (!best || score > best.score) best = {candidate: c, covered, score};
         }
 
