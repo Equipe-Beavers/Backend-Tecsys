@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 import Fastify from "fastify";
 import { Script, createContext } from "node:vm";
+import { readFileSync } from "node:fs";
 import { registerPasswordResetPage } from "../src/views/password-reset.js";
 
 describe("página pública de redefinição no próprio backend", () => {
+  it("usa os arquivos oficiais de logo e fundo do carregamento, sem redesenhar o símbolo", async () => {
+    const app = Fastify(); registerPasswordResetPage(app);
+    try {
+      const response = await app.inject("/redefinir-senha");
+      for (const name of ["logo_geomash.png", "auth_loading_background.png"]) {
+        const asset = readFileSync(new URL(`../assets/images/${name}`, import.meta.url));
+        expect(response.body).toContain(`data:image/png;base64,${asset.toString("base64")}`);
+      }
+      expect(response.headers["content-security-policy"]).toContain("img-src data:");
+      expect(response.body).not.toContain('<svg class="mark"');
+      expect(response.body).not.toContain('pattern id="terrain"');
+    } finally { await app.close(); }
+  });
   it("confirma senhas, envia token por POST e trata sucesso e expiração", async () => {
     const app = Fastify(); registerPasswordResetPage(app);
     try {
