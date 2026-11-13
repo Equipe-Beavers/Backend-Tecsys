@@ -81,6 +81,17 @@ export class BuildingIndex {
     }
 
 
+    /** Identifica se o candidato esta dentro do perimetro de uma edificacao Overture. */
+    containsPoint(latitude: number, longitude: number): boolean {
+        const point = this.projector.toLocal(longitude, latitude);
+        const key = `${Math.floor(point.x / CELL_SIZE_M)}:${Math.floor(point.y / CELL_SIZE_M)}`;
+        return (this.cells.get(key) ?? []).some(item =>
+            point.x >= item.minX && point.x <= item.maxX &&
+            point.y >= item.minY && point.y <= item.maxY &&
+            this.geometryUtils.PointInRings(point, item.rings)
+        );
+    }
+
     Crossings(links: LinkDTO[], frequencyMhz: number): BuildingOnLinkRow[] {
         const rows: BuildingOnLinkRow[] = [];
         const lossByMaterial = new Map<string, number>();

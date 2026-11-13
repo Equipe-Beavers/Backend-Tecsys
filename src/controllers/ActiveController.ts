@@ -81,7 +81,7 @@ export class ActiveController {
     }
 
     async FindAssetById(request: FastifyRequest <{Params: DetailParams}>, reply: FastifyReply) {
-        try {  
+        try {
             const active = await this.activeService.findAssetById(request.params.id);
             if (!active) return reply.status(404).send({ message: "Ativo não encontrado." });
             return reply.status(200).send({active});

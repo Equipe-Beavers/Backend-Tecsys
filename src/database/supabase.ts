@@ -8,6 +8,11 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // PostgreSQL-backed routes can start without Supabase credentials.
 function createSupabaseClient() {
+    if (process.env.DISABLE_SUPABASE === "true") {
+        return new Proxy({} as ReturnType<typeof createClient>, {
+            get() { throw new Error("Supabase desativado neste ambiente."); }
+        });
+    }
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         return new Proxy({} as ReturnType<typeof createClient>, {
             get() { throw new Error("Supabase indisponível: configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env."); }

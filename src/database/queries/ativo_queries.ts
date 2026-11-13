@@ -33,7 +33,7 @@ const assetCte = `
             pos.latitude,
             pos.longitude,
             pos.id_distribuidora,
-            a.registro_atual AND pos.registro_atual AS registro_atual,
+            pos.registro_atual,
             jsonb_build_object(
                 'altura', a.altura,
                 'material', a.material,
@@ -42,6 +42,10 @@ const assetCte = `
         FROM POSTES a
         JOIN POSICOES_GEOGRAFICAS pos
             ON pos.id_posicao = a.id_posicao
+        WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
 
         UNION ALL
 
@@ -55,11 +59,15 @@ const assetCte = `
             pos.latitude,
             pos.longitude,
             pos.id_distribuidora,
-            a.registro_atual AND pos.registro_atual AS registro_atual,
+            pos.registro_atual,
             jsonb_build_object('nome', a.nome) AS atributos
         FROM SUBESTACOES a
         JOIN POSICOES_GEOGRAFICAS pos
             ON pos.id_posicao = a.id_posicao
+        WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
 
         UNION ALL
 
@@ -73,7 +81,7 @@ const assetCte = `
             pos.latitude,
             pos.longitude,
             pos.id_distribuidora,
-            a.registro_atual AND pos.registro_atual AS registro_atual,
+            pos.registro_atual,
             jsonb_build_object(
                 'subestacao', a.subestacao,
                 'codigo_conjunto_aneel', a.codigo_conjunto_aneel
@@ -81,6 +89,10 @@ const assetCte = `
         FROM DISPOSITIVOS a
         JOIN POSICOES_GEOGRAFICAS pos
             ON pos.id_posicao = a.id_posicao
+        WHERE a.registro_atual = TRUE
+          AND pos.registro_atual = TRUE
+          AND pos.latitude BETWEEN $2 AND $4
+          AND pos.longitude BETWEEN $1 AND $3
     ),
     ativos AS (
         SELECT
@@ -114,21 +126,20 @@ const assetCte = `
             ON d.id = b.id_distribuidora
         LEFT JOIN tipos_dispositivos td
             ON td.id_tipo_dispositivo = b.tip_id
-        WHERE b.registro_atual = TRUE
     )
 `;
 
 export function findAssetsQuery(filters: AssetFilters) {
     const values: unknown[] = [
-        filters.minLatitude,
-        filters.maxLatitude,
         filters.minLongitude,
+        filters.minLatitude,
         filters.maxLongitude,
+        filters.maxLatitude,
     ];
 
     const conditions = [
-        `latitude BETWEEN $1 AND $2`,
-        `longitude BETWEEN $3 AND $4`,
+        `latitude BETWEEN $2 AND $4`,
+        `longitude BETWEEN $1 AND $3`,
     ];
 
     if (filters.distributors && filters.distributors.length > 0) {
@@ -235,6 +246,68 @@ export function findAssetsQuery(filters: AssetFilters) {
     };
 }
 
+/**
+ * Para uma área desenhada, todos os ativos BDGD são alvos de cobertura.
+ * O criterio de instalacao define EM QUAIS ativos um gateway pode ser instalado.
+ * Um ativo permitido pode ser 'ambos': candidato e ponto de interesse.
+ * A amostra de candidatos e limitada, mas a contagem de interesse e integral.
+ */
+export function findStudyAssetsQuery(
+    bbox: { minLongitude: number; minLatitude: number; maxLongitude: number; maxLatitude: number },
+    studyId: number,
+    maxInterest: number,
+    maxCandidates: number,
+    criterionId: number | null = null,
+) {
+    return {
+        values: [bbox.minLongitude, bbox.minLatitude, bbox.maxLongitude, bbox.maxLatitude,
+            studyId, maxInterest, maxCandidates, criterionId],
+        text: `
+            ${assetCte},
+            study AS (
+                SELECT e.geom, e.distribuidora, e.id_usuario,
+                    COALESCE($8::bigint, e.id_criterio_instalacao) AS criterio_id
+                FROM estudos e
+                WHERE e.id_estudo = $5 AND e.geom IS NOT NULL
+            ),
+            selected_criterion AS (
+                SELECT c.tipos_elementos_permitidos, c.tipos_elementos_proibidos
+                FROM study s
+                JOIN criterios_instalacao c
+                  ON c.id_criterio_instalacao = s.criterio_id
+                 AND c.id_usuario = s.id_usuario
+            ),
+            inside_area AS (
+                SELECT a.id, a.cod_id, a.tipo, a.latitude, a.longitude, a.atributos,
+                    (
+                        (c.tipos_elementos_permitidos IS NULL
+                         OR c.tipos_elementos_permitidos = '[]'::jsonb
+                         OR c.tipos_elementos_permitidos ? a.tipo)
+                        AND NOT (COALESCE(c.tipos_elementos_proibidos, '[]'::jsonb) ? a.tipo)
+                    ) AS candidato_permitido
+                FROM ativos a CROSS JOIN study s CROSS JOIN selected_criterion c
+                WHERE ST_Covers(s.geom,
+                    ST_SetSRID(ST_MakePoint(a.longitude, a.latitude), 4674))
+                  AND (NULLIF(s.distribuidora, '') IS NULL OR a.distribuidora = s.distribuidora)
+            ),
+            ranked AS (
+                SELECT *,
+                    row_number() OVER (PARTITION BY candidato_permitido ORDER BY md5(id)) AS ordem_candidato,
+                    COUNT(*) OVER () AS total_interesse,
+                    COUNT(*) FILTER (WHERE candidato_permitido) OVER () AS total_candidatos
+                FROM inside_area
+            )
+            SELECT id, cod_id, tipo, latitude, longitude, atributos,
+                CASE WHEN candidato_permitido AND ordem_candidato <= $7
+                     THEN 'ambos' ELSE 'interesse' END AS papel,
+                total_interesse, total_candidatos
+            FROM ranked
+            ORDER BY id
+            LIMIT ($6::integer + 1)
+        `,
+    };
+}
+
 export const findDeviceTypesQuery = `
     SELECT
         id_tipo_dispositivo AS id,
@@ -245,47 +318,16 @@ export const findDeviceTypesQuery = `
 `;
 
 export const findDistributorsQuery = `
-    WITH ativos AS (
-        SELECT
-            pos.id_distribuidora,
-            pos.latitude,
-            pos.longitude,
-            poste.registro_atual AND pos.registro_atual AS registro_atual
-        FROM POSTES poste
-        JOIN POSICOES_GEOGRAFICAS pos
-            ON pos.id_posicao = poste.id_posicao
-
-        UNION ALL
-
-        SELECT
-            pos.id_distribuidora,
-            pos.latitude,
-            pos.longitude,
-            subestacao.registro_atual AND pos.registro_atual AS registro_atual
-        FROM SUBESTACOES subestacao
-        JOIN POSICOES_GEOGRAFICAS pos
-            ON pos.id_posicao = subestacao.id_posicao
-
-        UNION ALL
-
-        SELECT
-            pos.id_distribuidora,
-            pos.latitude,
-            pos.longitude,
-            dispositivo.registro_atual AND pos.registro_atual AS registro_atual
-        FROM DISPOSITIVOS dispositivo
-        JOIN POSICOES_GEOGRAFICAS pos
-            ON pos.id_posicao = dispositivo.id_posicao
-    )
     SELECT
         d.nome,
-        AVG(a.latitude) AS latitude,
-        AVG(a.longitude) AS longitude,
+        AVG(pos.latitude) AS latitude,
+        AVG(pos.longitude) AS longitude,
         COUNT(*)::int AS total_ativos
-    FROM ativos a
+    FROM posicoes_geograficas pos
     JOIN distribuidoras d
-        ON d.id = a.id_distribuidora
-    WHERE a.registro_atual = TRUE
+        ON d.id = pos.id_distribuidora
+    WHERE pos.registro_atual = TRUE
+      AND pos.tipo_posicao IN ('POSTE', 'SUBESTACAO', 'DISPOSITIVO')
     GROUP BY d.id, d.nome
     ORDER BY d.nome
 `;

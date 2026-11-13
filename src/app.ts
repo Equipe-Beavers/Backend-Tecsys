@@ -8,22 +8,25 @@ import { ScenarioController } from "./controllers/ScenarioController.js";
 import { InstallCriterionController } from "./controllers/InstallCriterionController.js";
 import { RFController } from "./controllers/RFController.js";
 import { RecommendationController } from "./controllers/RecommendationController.js";
-import { ActiveController } from "./controllers/ActiveController.js";
-import { RegionsController } from "./controllers/RegionsController.js";
 import { ativoRoutes } from "./modules/ativo.routes.js";
 import { regioesRoutes } from "./modules/regioes.routes.js";
+import { antenasRoutes } from "./modules/antenas.routes.js";
+import { emissoesRfRoutes } from "./modules/emissoes-rf.routes.js";
+import { vegetacaoRoutes } from "./modules/vegetacao.routes.js";
 
 export class App {
   public app: fastify.FastifyInstance;
   constructor() {
     this.app = fastify({ logger: true, ajv: { customOptions: { removeAdditional: false } } });
-    // Flutter Web development origin; deployments can provide an explicit list.
     void this.app.register(cors, {
       origin: process.env.CORS_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean)
         ?? /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     });
-    void this.app.register(regioesRoutes, { prefix: "/api" });
+    void this.app.register(vegetacaoRoutes);
+    void this.app.register(antenasRoutes);
+    void this.app.register(emissoesRfRoutes);
+    void this.app.register(regioesRoutes);
     void this.app.register(ativoRoutes);
     this.routes();
   }
@@ -49,12 +52,8 @@ export class App {
     const installCriterionController = new InstallCriterionController();
     const rfControler = new RFController();
     const recommendationController = new RecommendationController();
-    const regionsController = new RegionsController();
-    const activeController = new ActiveController();
     const buildingController = new BuildingController();
     const propagationController = new PropagationController();
-    const activeController = new ActiveController();
-    const regionsController = new RegionsController();
 
     this.app.post("/create-user", async (request, reply) => {
       await userController.CreateUser(
@@ -165,7 +164,21 @@ export class App {
       );
     });
 
-    this.app.post("/study/:id/recommendation", async (request, reply) => {
+    this.app.post("/study/:id/recommendation", {
+      schema: {
+        params: studyParams,
+        body: {
+          type: "object",
+          required: ["id_perfil_rf"],
+          additionalProperties: false,
+          properties: {
+            id_perfil_rf: studyId,
+            id_criterio_instalacao: { type: ["integer", "null"], minimum: 1 },
+            nome_cenario: { type: "string", minLength: 1, maxLength: 150 },
+          },
+        },
+      },
+    }, async (request, reply) => {
       await recommendationController.GenerateRecommendation(
         request as Parameters<RecommendationController["GenerateRecommendation"]>[0],
         reply
@@ -296,14 +309,10 @@ export class App {
       // JSONB shape is not prescribed by the approved model.
       tipos_elementos_permitidos: {},
       tipos_elementos_proibidos: {},
-      requer_alimentacao_eletrica: { type: ["boolean", "null"] },
       distancia_minima_ativos_m: { type: ["number", "null"], minimum: 10, maximum: 500 },
       distancia_maxima_ativos_m: { type: ["number", "null"], minimum: 10, maximum: 500 },
       limite_gateways: { type: ["integer", "null"], minimum: 1, maximum: 2147483647 },
       relevo: {},
-      vegetacoes: {},
-      edificacoes: {},
-      antenas: {},
     };
     this.app.post("/create-install-criterion", {
       schema: { body: {
@@ -385,10 +394,6 @@ export class App {
       altura_dispositivo_m: { type: ["number", "null"], minimum: 0 },
       capacidade_max_equipamentos: { type: ["integer", "null"] },
       atenuacao_adicional_db: { type: ["number", "null"], minimum: 0 },
-      considera_relevo: { type: "boolean" },
-      considera_vegetacao: { type: "boolean" },
-      considera_edificacoes: { type: "boolean" },
-      considera_antenas: { type: "boolean" },
     };
     const rfProfileProperties = { id_usuario: criterionId, ...rfProfileFields };
     this.app.post("/calculate-rf-range", {
@@ -463,45 +468,6 @@ export class App {
       await rfControler.CreateRFProfile(
         request as Parameters<RFController["CreateRFProfile"]>[0],
         reply
-      );
-    });
-
-    // Rotas sem prefixo mantidas para o frontend da SCRUM-54. As rotas
-    // equivalentes em /api continuam registradas acima para a develop.
-    this.app.get("/distribuidoras", async (request, reply) => {
-      return regionsController.ListDistributor(
-        request as Parameters<RegionsController["ListDistributor"]>[0], reply,
-      );
-    });
-    this.app.get("/estados", async (request, reply) => {
-      return regionsController.ListStates(
-        request as Parameters<RegionsController["ListStates"]>[0], reply,
-      );
-    });
-    this.app.get("/municipios", async (request, reply) => {
-      return regionsController.ListMunicipios(
-        request as Parameters<RegionsController["ListMunicipios"]>[0], reply,
-      );
-    });
-    this.app.get("/bairros", async (request, reply) => {
-      return regionsController.ListNeighborhood(
-        request as Parameters<RegionsController["ListNeighborhood"]>[0], reply,
-      );
-    });
-    this.app.get("/ativos/distribuidoras", async (request, reply) => {
-      return activeController.FindDistributors(request, reply);
-    });
-    this.app.get("/ativos/tipos-dispositivos", async (request, reply) => {
-      return activeController.FindDeviceTypes(request, reply);
-    });
-    this.app.get("/ativos", async (request, reply) => {
-      return activeController.FindAssets(
-        request as Parameters<ActiveController["FindAssets"]>[0], reply,
-      );
-    });
-    this.app.get("/ativos/:id", async (request, reply) => {
-      return activeController.FindAssetById(
-        request as Parameters<ActiveController["FindAssetById"]>[0], reply,
       );
     });
 
