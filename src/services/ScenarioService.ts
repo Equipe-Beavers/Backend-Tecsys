@@ -69,7 +69,7 @@ export class ScenarioService {
     ];
 
     const query = `
-      INSERT INTO cenarios 
+      INSERT INTO cenarios
       (id_estudo, id_perfil_rf, id_criterio_instalacao, id_cenario_base, nome, descricao, objetivo, status, quantidade_gateways, pontos_interesse, pontos_cobertos, pontos_nao_cobertos, percentual_cobertura, capacidade_utilizada_media_pct, custo_total_estimado, mancha_consolidada, executado_em)
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
@@ -108,7 +108,7 @@ export class ScenarioService {
     ];
 
     const query = `
-      INSERT INTO cenario_atendimentos 
+      INSERT INTO cenario_atendimentos
       (id_cenario_gateway, id_estudo_ponto, distancia_m, nivel_sinal_estimado_dbm)
       VALUES ($1, $2, $3, $4) RETURNING *;
     `;
@@ -147,7 +147,7 @@ export class ScenarioService {
     ];
 
     const query = `
-      INSERT INTO cenario_gateways 
+      INSERT INTO cenario_gateways
       (id_cenario, id_estudo_ponto, ordem, quantidade_pontos_atendidos, capacidade_utilizada_pct, custo_estimado, parametros_calculo, mancha_cobertura)
       VALUES (
         $1, $2, $3, $4, $5, $6, $7,

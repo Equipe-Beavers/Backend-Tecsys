@@ -58,8 +58,8 @@ describe("POST /estudos/:id/pontos", () => {
         });
 
         expect(response.statusCode).toBe(400);
-        expect(response.json().erro).toBe(
-            "O estudo da URL deve ser igual ao estudo informado no corpo"
+        expect(response.json().message).toBe(
+            "O estudo da URL deve ser igual ao estudo informado no corpo."
         );
         await app.close();
     });

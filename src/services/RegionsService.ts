@@ -13,44 +13,29 @@ import { RegionsUtils } from "../utils/RegionsUtils.js";
 const ATIVOS_CTE = `
   WITH ativos AS (
     SELECT
-      CONCAT('POSTE:', a.id_poste::text) AS id_ativo,
+      pos.id_posicao,
       pos.municipio,
       pos.bairro,
       pos.latitude,
       pos.longitude,
       pos.id_distribuidora,
-      COALESCE(a.lote_carga, pos.lote_carga) AS lote_carga,
-      a.registro_atual AND pos.registro_atual AS registro_atual
-    FROM POSTES a
-    JOIN POSICOES_GEOGRAFICAS pos ON pos.id_posicao = a.id_posicao
-
-    UNION ALL
-
-    SELECT
-      CONCAT('SUBESTACAO:', a.id_subestacao::text) AS id_ativo,
-      pos.municipio,
-      pos.bairro,
-      pos.latitude,
-      pos.longitude,
-      pos.id_distribuidora,
-      COALESCE(a.lote_carga, pos.lote_carga) AS lote_carga,
-      a.registro_atual AND pos.registro_atual AS registro_atual
-    FROM SUBESTACOES a
-    JOIN POSICOES_GEOGRAFICAS pos ON pos.id_posicao = a.id_posicao
-
-    UNION ALL
-
-    SELECT
-      CONCAT('DISPOSITIVO:', a.id_dispositivo::text) AS id_ativo,
-      pos.municipio,
-      pos.bairro,
-      pos.latitude,
-      pos.longitude,
-      pos.id_distribuidora,
-      COALESCE(a.lote_carga, pos.lote_carga) AS lote_carga,
-      a.registro_atual AND pos.registro_atual AS registro_atual
-    FROM DISPOSITIVOS a
-    JOIN POSICOES_GEOGRAFICAS pos ON pos.id_posicao = a.id_posicao
+      pos.registro_atual
+    FROM POSICOES_GEOGRAFICAS pos
+    WHERE pos.registro_atual = TRUE
+      AND (
+        EXISTS (
+          SELECT 1 FROM POSTES a
+          WHERE a.id_posicao = pos.id_posicao AND a.registro_atual = TRUE
+        )
+        OR EXISTS (
+          SELECT 1 FROM SUBESTACOES a
+          WHERE a.id_posicao = pos.id_posicao AND a.registro_atual = TRUE
+        )
+        OR EXISTS (
+          SELECT 1 FROM DISPOSITIVOS a
+          WHERE a.id_posicao = pos.id_posicao AND a.registro_atual = TRUE
+        )
+      )
   )
 `;
 
@@ -188,7 +173,7 @@ export class RegionsService {
       SELECT
         m.nome,
         m.uf,
-        COUNT(p.id_ativo)::int AS total_ativos,
+        COUNT(p.id_posicao)::int AS total_ativos,
         AVG(p.latitude) AS lat,
         AVG(p.longitude) AS lng
       FROM ativos p
@@ -216,7 +201,14 @@ export class RegionsService {
     };
   }
 
+  private distributorLocalsCache: { data: Map<string, DistribuidoraLocal>; expiresAt: number } | null = null;
+  private static readonly distributorLocalsTtlMs = 5 * 60 * 1000;
+
   private async distributorLocals(): Promise<Map<string, DistribuidoraLocal>> {
+    if (this.distributorLocalsCache && this.distributorLocalsCache.expiresAt > Date.now()) {
+      return this.distributorLocalsCache.data;
+    }
+
     try {
       const result = await pool.query<{
         nome: string;
@@ -225,15 +217,28 @@ export class RegionsService {
         longitude: number | null;
       }>(
         `
-            ${ATIVOS_CTE}
             SELECT
             d.nome,
             COUNT(*)::int AS total_ativos,
             AVG(p.latitude) AS latitude,
             AVG(p.longitude) AS longitude
-            FROM ativos p
+            FROM posicoes_geograficas p
             JOIN distribuidoras d ON d.id = p.id_distribuidora
             WHERE p.registro_atual = TRUE
+              AND (
+                EXISTS (
+                  SELECT 1 FROM POSTES a
+                  WHERE a.id_posicao = p.id_posicao AND a.registro_atual = TRUE
+                )
+                OR EXISTS (
+                  SELECT 1 FROM SUBESTACOES a
+                  WHERE a.id_posicao = p.id_posicao AND a.registro_atual = TRUE
+                )
+                OR EXISTS (
+                  SELECT 1 FROM DISPOSITIVOS a
+                  WHERE a.id_posicao = p.id_posicao AND a.registro_atual = TRUE
+                )
+              )
             GROUP BY d.id, d.nome
         `,
       );
@@ -247,6 +252,10 @@ export class RegionsService {
           longitude: row.longitude === null ? null : Number(row.longitude),
         });
       }
+      this.distributorLocalsCache = {
+        data: map,
+        expiresAt: Date.now() + RegionsService.distributorLocalsTtlMs,
+      };
       return map;
     } catch (error: any) {
       return new Map();
@@ -355,7 +364,7 @@ export class RegionsService {
         SELECT
           m.uf,
           COUNT(DISTINCT m.codigo_ibge)::int AS total_municipios,
-          COUNT(p.id_ativo)::int AS total_ativos
+          COUNT(p.id_posicao)::int AS total_ativos
         FROM ativos p
         JOIN municipios m
           ON m.codigo_ibge::text = p.municipio
@@ -437,7 +446,7 @@ export class RegionsService {
         p.bairro AS nome,
         m.uf,
         m.nome AS municipio,
-        COUNT(p.id_ativo)::int AS total_ativos
+        COUNT(p.id_posicao)::int AS total_ativos
       FROM ativos p
       JOIN municipios m
         ON m.codigo_ibge::text = p.municipio
