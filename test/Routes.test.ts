@@ -19,6 +19,7 @@ describe("registro das rotas públicas", () => {
     "/antenas",
     "/emissoes-rf",
     "/distribuidoras",
+    "/distribuidoras/:id",
     "/municipios",
     "/ativos",
   ])("registra GET %s sem o prefixo /api", (url) => {

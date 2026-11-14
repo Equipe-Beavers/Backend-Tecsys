@@ -323,6 +323,41 @@ export class RegionsService {
     );
   }
 
+  async getDistributorById(id: number): Promise<DistribuidoraDTO> {
+    const distributorId = Number(id);
+    if (!Number.isSafeInteger(distributorId) || distributorId < 1) {
+      throw new Error("ID de distribuidora inválido.");
+    }
+
+    const result = await pool.query<{
+      id: number | string;
+      nome: string;
+      uf: string | null;
+      ano_bdgd: number | string | null;
+    }>(
+      "SELECT id, nome, uf, ano_bdgd FROM distribuidoras WHERE id = $1",
+      [distributorId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error(`Distribuidora ${distributorId} não encontrada.`);
+    }
+
+    const local = (await this.distributorLocals()).get(
+      this.regionsUtils.normalizeName(row.nome),
+    );
+
+    return {
+      id: Number(row.id),
+      nome: local?.nome ?? row.nome,
+      uf: row.uf,
+      anoBdgd: row.ano_bdgd == null ? null : Number(row.ano_bdgd),
+      totalAtivos: local?.totalAtivos ?? 0,
+      latitude: local?.latitude ?? null,
+      longitude: local?.longitude ?? null,
+    };
+  }
+
   async listMunicipio(params: {
     distribuidora?: string;
     uf?: string;
