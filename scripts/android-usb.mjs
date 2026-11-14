@@ -25,7 +25,7 @@ export function parseDevices(output) {
 }
 
 /** Development only. Rechecks mappings so USB reconnections need no manual command. */
-export async function startAndroidUsb({ port = 3000, log = console.log, run = exec, adb } = {}) {
+export async function startAndroidUsb({ port = 3000, label = "backend", log = console.log, run = exec, adb } = {}) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid backend port");
   adb ??= await findAdb();
   if (!adb) {
@@ -50,7 +50,7 @@ export async function startAndroidUsb({ port = 3000, log = console.log, run = ex
           const fields = line.trim().split(/\s+/); return fields.at(-2) === expected && fields.at(-1) === expected;
         });
         if (!mapped) await run(adb, ["-s", id, "reverse", expected, expected], { timeout: 5000 });
-        if (!connected.has(id) || !mapped) log(`[USB] Android conectado ao backend em http://127.0.0.1:${port}`);
+        if (!connected.has(id) || !mapped) log(`[USB] Android conectado ao ${label} em http://127.0.0.1:${port}`);
         connected.add(id);
       }
       warned = false;
