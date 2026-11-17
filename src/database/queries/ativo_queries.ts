@@ -253,20 +253,31 @@ export function findAssetsQuery(filters: AssetFilters) {
  * A amostra de candidatos e limitada, mas a contagem de interesse e integral.
  */
 export function findStudyAssetsQuery(
-    bbox: { minLongitude: number; minLatitude: number; maxLongitude: number; maxLatitude: number },
-    studyId: number,
-    maxInterest: number,
-    maxCandidates: number,
-    criterionId: number | null = null,
+  bbox: {
+    minLongitude: number;
+    minLatitude: number;
+    maxLongitude: number;
+    maxLatitude: number;
+  },
+  studyId: number,
+  maxInterest: number,
+  criterionId: number | null = null,
 ) {
     return {
-        values: [bbox.minLongitude, bbox.minLatitude, bbox.maxLongitude, bbox.maxLatitude,
-            studyId, maxInterest, maxCandidates, criterionId],
+        values: [
+          bbox.minLongitude,
+          bbox.minLatitude,
+          bbox.maxLongitude,
+          bbox.maxLatitude,
+          studyId,
+          maxInterest,
+          criterionId,
+        ],
         text: `
             ${assetCte},
             study AS (
                 SELECT e.geom, e.distribuidora, e.id_usuario,
-                    COALESCE($8::bigint, e.id_criterio_instalacao) AS criterio_id
+                    COALESCE($7::bigint, e.id_criterio_instalacao)
                 FROM estudos e
                 WHERE e.id_estudo = $5 AND e.geom IS NOT NULL
             ),
@@ -292,14 +303,15 @@ export function findStudyAssetsQuery(
             ),
             ranked AS (
                 SELECT *,
-                    row_number() OVER (PARTITION BY candidato_permitido ORDER BY md5(id)) AS ordem_candidato,
                     COUNT(*) OVER () AS total_interesse,
                     COUNT(*) FILTER (WHERE candidato_permitido) OVER () AS total_candidatos
                 FROM inside_area
             )
             SELECT id, cod_id, tipo, latitude, longitude, atributos,
-                CASE WHEN candidato_permitido AND ordem_candidato <= $7
-                     THEN 'ambos' ELSE 'interesse' END AS papel,
+                CASE WHEN candidato_permitido
+                     THEN 'ambos'
+                     ELSE 'interesse'
+                END AS papel,
                 total_interesse, total_candidatos
             FROM ranked
             ORDER BY id

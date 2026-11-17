@@ -1,9 +1,7 @@
 import { pool } from "../database/pool.js";
 import { findStudyAssetsQuery } from "../database/queries/ativo_queries.js";
 
-/** Limites operacionais explícitos. Nunca apresentar contagem parcial como total. */
 const MAX_INTEREST = 3000;
-const MAX_CANDIDATES = 25;
 
 type BoundingRow = {
   min_lon: number;
@@ -30,13 +28,6 @@ export interface StudyAssetsPrepared {
 }
 
 export class StudyAssetPreparationService {
-  /**
-   * A geometria desenhada define a area; seus vertices nao sao ativos.
-   * A BDGD e a fonte dos pontos de interesse e dos locais candidatos.
-   * Todos os ativos da area sao pontos de interesse. Os tipos permitidos no
-   * criterio de instalacao tambem sao candidatos (papel ambos).
-   * Se o estudo ja recebeu pontos reais (CSV/manual/BDGD), preserva-os.
-   */
   async prepare(studyId: number, criterionId: number | null = null): Promise<StudyAssetsPrepared> {
     const existing = await pool.query<{ total: number }>(
       `SELECT COUNT(*)::int AS total FROM estudo_pontos
@@ -63,7 +54,7 @@ export class StudyAssetPreparationService {
       minLatitude: Number(bbox.min_lat),
       maxLongitude: Number(bbox.max_lon),
       maxLatitude: Number(bbox.max_lat),
-    }, studyId, MAX_INTEREST, MAX_CANDIDATES, criterionId);
+    }, studyId, MAX_INTEREST, criterionId);
 
     let rows: StudyAssetRow[];
     try {

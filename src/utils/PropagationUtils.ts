@@ -42,12 +42,16 @@ export class PropagationUtils {
             gatewayGainDbi: this.NumberOr(antenna.ganho_gateway_dbi ?? antenna.ganho_dbi, 0),
             deviceGainDbi: this.NumberOr(antenna.ganho_dispositivo_dbi, 0),
             cableLossDb: this.NumberOr(antenna.perda_cabos_db, 0),
-            marginDb: this.NumberOr(extra.margem_db, 10),
+            marginDb: this.NumberOr(extra.margem_db, 20),
             gatewayHeightM: gatewayHeightM ?? this.NumberOr(profile.altura_gateway_m, 15),
             deviceHeightM: this.NumberOr(profile.altura_dispositivo_m, 2),
             environment,
             considerBuildings: true,
             estimatedRangeM: profile.alcance_estimado_m != null ? Number(profile.alcance_estimado_m) : null,
+            additionalLossDb: Math.max(
+                0,
+                this.NumberOr(profile.atenuacao_adicional_db, 0),
+            ),
         };
     }
 
@@ -57,13 +61,24 @@ export class PropagationUtils {
             params.gatewayGainDbi +
             params.deviceGainDbi -
             params.cableLossDb -
+            (params.additionalLossDb ?? 0) -
             params.marginDb -
             params.rxSensitivityDbm
         );
     }
 
-    SignalLevelDbm(params: PropagationParameters, totalLossDb: number): number {
-        return params.txPowerDbm + params.gatewayGainDbi + params.deviceGainDbi - params.cableLossDb - totalLossDb;
+    SignalLevelDbm(
+        params: PropagationParameters,
+        totalLossDb: number,
+    ): number {
+        return (
+            params.txPowerDbm +
+            params.gatewayGainDbi +
+            params.deviceGainDbi -
+            params.cableLossDb -
+            (params.additionalLossDb ?? 0) -
+            totalLossDb
+        );
     }
 
     IsCovered(params: PropagationParameters, signalDbm: number): boolean {

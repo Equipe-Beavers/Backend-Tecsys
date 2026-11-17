@@ -10,6 +10,7 @@ export interface PropagationParameters {
     gatewayGainDbi: number;
     deviceGainDbi: number;
     cableLossDb: number;
+    additionalLossDb?: number;
     marginDb: number;
     gatewayHeightM: number;
     deviceHeightM: number;

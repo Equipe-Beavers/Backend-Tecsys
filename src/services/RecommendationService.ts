@@ -47,7 +47,8 @@ export class RecommendationService {
 
     // Os vertices do poligono definem a area, mas nao sao ativos BDGD.
     const preparation = await new StudyAssetPreparationService().prepare(
-      input.id_estudo, input.id_criterio_instalacao ?? null,
+      input.id_estudo,
+      input.id_criterio_instalacao ?? null,
     );
     const pointsResult = await pool.query(
       "SELECT * FROM estudo_pontos WHERE id_estudo = $1 AND COALESCE(atributos->>'tipo_ponto', '') <> 'vertice_area'",
@@ -85,11 +86,6 @@ export class RecommendationService {
 
     const params = this.propagationService.buildParameters(rf as PerfilRf);
     const environmental = await this.environmentalService.prepare(allPoints);
-    if (preparation.totalCandidates > preparation.importedCandidates) {
-      environmental.summary.avisos.push(
-        `Avaliados ${preparation.importedCandidates} de ${preparation.totalCandidates} candidatos BDGD (amostragem operacional).`,
-      );
-    }
     const pointsById = new Map(interestPoints.map((p) => [String(p.id_estudo_ponto), p]));
     const propagationPoints = interestPoints.map((p) => ({
       id: String(p.id_estudo_ponto),
