@@ -2,6 +2,7 @@ import { assetTypes } from "../src/interface/AssetType.js";
 import { InstallCriterionUtils } from "../src/utils/InstallCriterionUtils.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app.js';
+import { createTestApp } from './helpers/create-test-app.js';
 import { InstallCriterionValidation } from '../src/utils/InstallCriterionValidation.js';
 import { lockInstallCriterionQuery, updateInstallCriterionQuery } from '../src/database/queries.js';
 const db = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn(), release: vi.fn() }));
@@ -25,7 +26,7 @@ const invalid = [
 ];
 describe('Criteria semantic validation', () => {
   let app: ReturnType<App['getInstance']>;
-  beforeEach(() => { vi.resetAllMocks(); app = new App().getInstance(); app.log.level = 'silent'; db.connect.mockResolvedValue(db); });
+  beforeEach(() => { vi.resetAllMocks(); app = createTestApp(); app.log.level = 'silent'; db.connect.mockResolvedValue(db); });
   afterEach(async () => { await app.close(); });
   it.each(invalid)('rejects invalid JSON before persistence: %j', async (fields) => {
     for (const method of ['POST', 'PATCH'] as const) {
