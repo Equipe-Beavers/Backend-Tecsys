@@ -23,14 +23,69 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("recuperação de senha", () => {
-  it("sem URL configurada usa a página do backend e exige URL explícita em produção", async () => {
+  it("encaminha o Origin do navegador da rota pública ao serviço de recuperação", async () => {
+    const request = vi.spyOn(PasswordResetService.prototype, "request").mockResolvedValue();
+    const app = new App().getInstance();
+    try {
+      const response = await app.inject({ method: "POST", url: "/auth/forgot-password",
+        headers: { origin: "http://localhost:46201" }, payload: { email: "delivered@resend.dev" } });
+      expect(response.statusCode).toBe(202);
+      expect(request).toHaveBeenCalledWith("delivered@resend.dev", "http://localhost:46201");
+    } finally { await app.close(); }
+  });
+  it.each(["http://localhost:46201", "http://127.0.0.1:43111"])("detecta a porta do Flutter local pelo Origin %s", async (origin) => {
+    vi.stubEnv("NODE_ENV", "development");
+    client.query.mockImplementation(async (sql: string) => ({ rows: sql.startsWith("SELECT id_usuario, email") ? [{ id_usuario: 7, email: "delivered@resend.dev" }] : [] }));
+    const send = vi.spyOn(EmailService.prototype, "sendText").mockResolvedValue("mail-id");
+    await new PasswordResetService().request("delivered@resend.dev", origin);
+    const link = new URL(send.mock.calls[0]![0].text.match(/http[^\s]+/)![0]);
+    expect(link.origin).toBe(origin);
+    expect(link.hash).toMatch(/^#\/redefinir-senha\?token=[a-f0-9]{64}$/);
+  });
+
+  it.each(["https://attacker.example", "http://localhost.attacker.example:8080", "http://localhost:8080/path", "null"])("não usa Origin externo ou inválido: %s", async (origin) => {
+    vi.stubEnv("NODE_ENV", "development");
+    client.query.mockImplementation(async (sql: string) => ({ rows: sql.startsWith("SELECT id_usuario, email") ? [{ id_usuario: 7, email: "delivered@resend.dev" }] : [] }));
+    const send = vi.spyOn(EmailService.prototype, "sendText").mockResolvedValue("mail-id");
+    await new PasswordResetService().request("delivered@resend.dev", origin);
+    const link = new URL(send.mock.calls[0]![0].text.match(/http[^\s]+/)![0]);
+    expect(link.origin).toBe("http://localhost:8080");
+  });
+
+  it("em produção sempre usa o frontend configurado, independentemente do Origin", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("PASSWORD_RESET_URL", "https://app.example.com/");
+    vi.stubEnv("EMAIL_FROM", "Geomash <acesso@mail.example.com>");
+    client.query.mockImplementation(async (sql: string) => ({ rows: sql.startsWith("SELECT id_usuario, email") ? [{ id_usuario: 7, email: "delivered@resend.dev" }] : [] }));
+    const send = vi.spyOn(EmailService.prototype, "sendText").mockResolvedValue("mail-id");
+    await new PasswordResetService().request("delivered@resend.dev", "http://localhost:46201");
+    expect(send.mock.calls[0]![0].text).toContain("https://app.example.com/#/redefinir-senha?token=");
+  });
+  it("backend mantém a API e não publica a interface de redefinição", async () => {
+    const app = new App().getInstance();
+    try {
+      expect((await app.inject("/redefinir-senha")).statusCode).toBe(404);
+    } finally { await app.close(); }
+  });
+
+  it.each(["https://app.example.com/", "https://app.example.com/redefinir-senha", "https://app.example.com/geomash/"])("envia para Flutter em %s e mantém o token no fragmento", async (base) => {
+    vi.stubEnv("PASSWORD_RESET_URL", base);
+    client.query.mockImplementation(async (sql: string) => ({ rows: sql.startsWith("SELECT id_usuario, email") ? [{ id_usuario: 7, email: "delivered@resend.dev" }] : [] }));
+    const send = vi.spyOn(EmailService.prototype, "sendText").mockResolvedValue("mail-id");
+    await new PasswordResetService().request("delivered@resend.dev");
+    const url = new URL(send.mock.calls[0]![0].text.match(/https[^\s]+/)![0]);
+    expect(url.origin).toBe("https://app.example.com");
+    expect(url.search).toBe("");
+    expect(url.hash).toMatch(/^#\/redefinir-senha\?token=[a-f0-9]{64}$/);
+  });
+  it("sem URL configurada usa a tela do frontend e exige URL explícita em produção", async () => {
     vi.stubEnv("PASSWORD_RESET_URL", "");
     vi.stubEnv("PORT", "3000");
     vi.stubEnv("NODE_ENV", "test");
     client.query.mockImplementation(async (sql: string) => ({ rows: sql.startsWith("SELECT id_usuario, email") ? [{ id_usuario: 7, email: "delivered@resend.dev" }] : [] }));
     const send = vi.spyOn(EmailService.prototype, "sendText").mockResolvedValue("mail-id");
     await new PasswordResetService().request("delivered@resend.dev");
-    expect(send.mock.calls[0]![0].text).toMatch(/http:\/\/127\.0\.0\.1:3000\/redefinir-senha#token=[a-f0-9]{64}/);
+    expect(send.mock.calls[0]![0].text).toMatch(/http:\/\/127\.0\.0\.1:8080\/#\/redefinir-senha\?token=[a-f0-9]{64}/);
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("EMAIL_FROM", "Geomash <acesso@mail.example.com>");
     await expect(new PasswordResetService().request("missing@example.com")).rejects.toMatchObject({ code: "EMAIL_NOT_CONFIGURED" });
@@ -98,7 +153,7 @@ describe("recuperação de senha", () => {
         expect(response.json()).toEqual({ message: resetReceipt });
         expect(response.headers["cache-control"]).toBe("no-store");
       }
-      expect(request).toHaveBeenCalledWith("delivered@resend.dev");
+      expect(request).toHaveBeenCalledWith("delivered@resend.dev", undefined);
       expect((await app.inject({ method: "POST", url: "/auth/forgot-password", payload: { email: "missing@example.com" } })).statusCode).toBe(429);
     } finally { await app.close(); }
   });

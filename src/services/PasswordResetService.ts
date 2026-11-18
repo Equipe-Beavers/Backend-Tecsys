@@ -11,14 +11,26 @@ const invalidLink = () => new AuthError(400, "INVALID_RESET_TOKEN", "Este link �
 export class PasswordResetService {
   constructor(private readonly passwords = new PasswordService()) {}
 
-  async request(email: string): Promise<void> {
+  async request(email: string, frontendOrigin?: string): Promise<void> {
     // Validate configuration for every address, including addresses without an account.
     const mail = new EmailService();
     let base: URL;
     try {
       const configured = process.env.PASSWORD_RESET_URL?.trim();
       if (!configured && process.env.NODE_ENV === "production") throw new Error();
-      base = new URL(configured || `http://127.0.0.1:${process.env.PORT || 3000}/redefinir-senha`);
+      base = new URL(configured || "http://127.0.0.1:8080/");
+      // flutter run chooses a new port. In local development, use the browser's
+      // actual origin instead of forcing a fixed port. Never trust it in production
+      // or allow an external origin to redirect a recovery token.
+      if (process.env.NODE_ENV !== "production" && frontendOrigin
+        && ["localhost", "127.0.0.1"].includes(base.hostname)) {
+        try {
+          const origin = new URL(frontendOrigin);
+          if (["http:", "https:"].includes(origin.protocol)
+            && ["localhost", "127.0.0.1"].includes(origin.hostname)
+            && frontendOrigin === origin.origin) base = new URL(`${origin.origin}/`);
+        } catch { /* Keep the configured fallback for native requests/invalid origins. */ }
+      }
       if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password
         || (base.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(base.hostname))) throw new Error();
     } catch {
@@ -48,9 +60,10 @@ export class PasswordResetService {
       throw error;
     } finally { client.release(); }
     if (!recipient) return;
-    // The default standalone page needs only the backend; explicit Flutter URLs remain supported.
-    base.hash = base.pathname.replace(/\/$/, "") === "/redefinir-senha"
-      ? `token=${token}` : `/redefinir-senha?token=${token}`;
+    // Flutter hash routing keeps the token out of HTTP requests and access logs.
+    base.pathname = base.pathname.replace(/\/redefinir-senha\/?$/, "/");
+    base.search = "";
+    base.hash = `/redefinir-senha?token=${token}`;
     try {
       const emailId = await mail.sendText({ to: recipient, subject: "Geomash — redefinir sua senha",
         text: `Recebemos uma solicitação para redefinir sua senha no Geomash.\n\nAbra o link abaixo e escolha uma nova senha:\n${base.href}\n\nO link expira em 15 minutos e só pode ser utilizado uma vez.\nSe você não solicitou a alteração, ignore esta mensagem. Sua senha permanece a mesma.`,

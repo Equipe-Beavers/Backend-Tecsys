@@ -9,7 +9,6 @@ import { AuthError } from "../utils/AuthError.js";
 import { SessionService } from "../services/SessionService.js";
 import { PasswordResetService, resetReceipt } from "../services/PasswordResetService.js";
 import { EmailDeliveryError } from "../services/EmailService.js";
-import { registerPasswordResetPage } from "../views/password-reset.js";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -100,7 +99,6 @@ export async function authRoutes(app: FastifyInstance, options: { secret?: strin
   const controller = new UserController();
   const users = new UserService();
   const signupLimiter = app.rateLimit({ max: 5, timeWindow: "15 minutes" });
-  registerPasswordResetPage(app);
 
   for (const reset of [false, true]) {
     app.post<{ Body: { email: string; token: string; senha: string } }>(
@@ -122,7 +120,7 @@ export async function authRoutes(app: FastifyInstance, options: { secret?: strin
             await service.reset(request.body.token, request.body.senha);
             return reply.status(204).send();
           }
-          await service.request(request.body.email);
+          await service.request(request.body.email, request.headers.origin);
           return reply.status(202).send({ message: resetReceipt });
         } catch (error) {
           if (error instanceof AuthError) {
