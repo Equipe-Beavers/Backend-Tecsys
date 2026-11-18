@@ -15,6 +15,7 @@ beforeEach(() => {
   db.connect.mockResolvedValue(client);
   client.query.mockReset().mockResolvedValue({ rows: [] });
   db.query.mockReset().mockResolvedValue({ rows: [] });
+  vi.stubEnv("EMAIL_PROVIDER", "resend");
   vi.stubEnv("RESEND_API_KEY", "test-only");
   vi.stubEnv("EMAIL_FROM", "Geomash <onboarding@resend.dev>");
   vi.stubEnv("PASSWORD_RESET_URL", "http://localhost:8080/");

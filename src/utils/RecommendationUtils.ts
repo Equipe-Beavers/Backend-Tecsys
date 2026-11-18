@@ -149,6 +149,57 @@ export class RecommendationUtils {
     const maxAttempts = Math.max(100, Math.min(candidates.length * count * 4, 2000));
     let attempts = 0;
 
+    const calculateWithFirstGateway = (
+      firstCandidate: EstudoPonto,
+    ): ResultadoCalculo | null => {
+      if (maxGateways < 1) return null;
+
+      const pending = new Map(interestPoints.map((point) => [point.id_estudo_ponto, point]));
+      const capability = profile.capacidade_max_equipamentos ?? Infinity;
+      const possibilities = [...(coverage.get(firstCandidate.id_estudo_ponto) ?? [])]
+        .filter((attendance) => pending.has(attendance.ponto.id_estudo_ponto))
+        .sort(
+          (first, second) =>
+            (WEIGHT_PRIORIRY[second.ponto.prioridade ?? "normal"] ?? 1) -
+            (WEIGHT_PRIORIRY[first.ponto.prioridade ?? "normal"] ?? 1),
+        );
+      const covered = capability === Infinity
+        ? possibilities
+        : possibilities.slice(0, capability);
+      if (covered.length === 0) return null;
+
+      covered.forEach((attendance) => pending.delete(attendance.ponto.id_estudo_ponto));
+      const remaining = this.CalculateRecommendation(
+        candidates.filter(
+          (candidate) => candidate.id_estudo_ponto !== firstCandidate.id_estudo_ponto,
+        ),
+        [...pending.values()],
+        profile,
+        coverage,
+        Number.isFinite(maxGateways) ? maxGateways - 1 : Infinity,
+      );
+
+      return {
+        gateways: [
+          { candidato: firstCandidate, atendimentos: covered },
+          ...remaining.gateways,
+        ],
+        pontosNaoCobertos: remaining.pontosNaoCobertos,
+      };
+    };
+
+    for (const candidate of candidates) {
+      if (attempts++ >= maxAttempts) break;
+      const result = calculateWithFirstGateway(candidate);
+      if (!result) continue;
+
+      const resultKey = signature(result);
+      if (seenResults.has(resultKey)) continue;
+      seenResults.add(resultKey);
+      results.push(result);
+      queue.push({ excluded: new Set<number>(), result });
+    }
+
     while (queue.length > 0 && attempts < maxAttempts) {
       const current = queue.shift()!;
       for (const gateway of current.result.gateways) {
@@ -172,6 +223,6 @@ export class RecommendationUtils {
       queue.sort((first, second) => compare(first.result, second.result));
     }
 
-    return [initial, ...results.slice(1).sort(compare)].slice(0, count);
+    return results.sort(compare).slice(0, count);
   }
 }
