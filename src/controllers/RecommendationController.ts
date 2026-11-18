@@ -22,6 +22,7 @@ export class RecommendationController {
     async GenerateRecommendation(request: FastifyRequest<{Params: RecomendarParams, Body: RecomendarBody}>, reply: FastifyReply) {
         try {
              const data = await this.recommendationService.generateRecommendation({
+                id_usuario: Number(request.user.sub),
                 id_estudo: request.params.id,
                 id_perfil_rf: request.body.id_perfil_rf,
                 id_criterio_instalacao: request.body.id_criterio_instalacao ?? null,

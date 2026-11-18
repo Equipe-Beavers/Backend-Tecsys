@@ -42,23 +42,24 @@ export class RFService {
     return this.mapLocalProfile(rows[0]);
   }
 
-  async getLocalRFProfile(id: number): Promise<RFProfileListItem | null> {
-    const { rows } = await pool.query(getRFProfileQuery, [id]);
+  async getLocalRFProfile(id: number, userId: number): Promise<RFProfileListItem | null> {
+    const { rows } = await pool.query(getRFProfileQuery, [id, userId]);
     return rows[0] ? this.mapLocalProfile(rows[0]) : null;
   }
 
   async updateLocalRFProfile(
     id: number,
     input: UpdateRFProfileInput,
+    userId: number,
   ): Promise<RFProfileListItem | null> {
     const data = { ...input };
     if (data.nome !== undefined) data.nome = data.nome.trim();
-    const { rows } = await pool.query(updateRFProfileQuery, [id, JSON.stringify(data)]);
+    const { rows } = await pool.query(updateRFProfileQuery, [id, JSON.stringify(data), userId]);
     return rows[0] ? this.mapLocalProfile(rows[0]) : null;
   }
 
-  async deleteLocalRFProfile(id: number): Promise<boolean> {
-    const { rows } = await pool.query(deleteRFProfileQuery, [id]);
+  async deleteLocalRFProfile(id: number, userId: number): Promise<boolean> {
+    const { rows } = await pool.query(deleteRFProfileQuery, [id, userId]);
     return rows.length > 0;
   }
 
