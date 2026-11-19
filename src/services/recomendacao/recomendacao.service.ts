@@ -44,8 +44,6 @@ export async function gerarRecomendacao(input: GerarRecomendacaoInput) {
 
   const totalInteresse = pontosInteresse.length;
   const totalCobertos = totalInteresse - resultado.pontosNaoCobertos.length;
-  const custoGateway = (perfil as PerfilRf).custo_estimado_gateway ?? 0; 
-  const custoTotal = resultado.gateways.length * custoGateway;
 
   const { data: cenario, error: erroCenario } = await supabase
     .from("cenarios")
@@ -60,7 +58,6 @@ export async function gerarRecomendacao(input: GerarRecomendacaoInput) {
       pontos_cobertos: totalCobertos,
       pontos_nao_cobertos: resultado.pontosNaoCobertos.length,
       percentual_cobertura: totalInteresse > 0 ? Math.round((totalCobertos / totalInteresse) * 100) : 0,
-      custo_total_estimado: custoTotal,
       executado_em: new Date().toISOString(),
     })
     .select()
@@ -74,7 +71,6 @@ export async function gerarRecomendacao(input: GerarRecomendacaoInput) {
         id_cenario: cenario.id_cenario,
         id_estudo_ponto: gw.candidato.id_estudo_ponto,
         quantidade_pontos_atendidos: gw.atendimentos.length,
-        custo_estimado: custoGateway,
       })
       .select()
       .single();
@@ -115,7 +111,6 @@ export async function gerarRecomendacao(input: GerarRecomendacaoInput) {
     id_cenario: cenario.id_cenario,
     quantidade_gateways: resultado.gateways.length,
     percentual_cobertura: cenario.percentual_cobertura,
-    custo_total_estimado: custoTotal,
     pontos_interesse: totalInteresse,
     pontos_cobertos: totalCobertos,
     pontos_nao_cobertos: resultado.pontosNaoCobertos.length,

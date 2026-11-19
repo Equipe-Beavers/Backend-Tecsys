@@ -108,15 +108,14 @@ export class RFService {
       rfData.quantidade_canais ?? null,
       rfData.limite_mensagens_transmissoes ?? null,
       rfData.periodo_limite_mensagens ?? null,
-      rfData.custo_estimado_gateway ?? null,
       rfData.caracteristicas_antena ?? null,
       rfData.parametros_adicionais ?? null,
     ];
 
     const query = `
       INSERT INTO perfis_rf
-      (id_usuario, nome, modelo_gateway, frequencia_mhz, potencia_transmissao_dbm, sensibilidade_recepcao_dbm, alcance_estimado_m, altura_gateway_m, altura_dispositivo_m, capacidade_max_equipamentos, quantidade_canais, limite_mensagens_transmissoes, periodo_limite_mensagens, custo_estimado_gateway, caracteristicas_antena, parametros_adicionais)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *;
+      (id_usuario, nome, modelo_gateway, frequencia_mhz, potencia_transmissao_dbm, sensibilidade_recepcao_dbm, alcance_estimado_m, altura_gateway_m, altura_dispositivo_m, capacidade_max_equipamentos, quantidade_canais, limite_mensagens_transmissoes, periodo_limite_mensagens, caracteristicas_antena, parametros_adicionais)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *;
     `;
 
     const result = await pool.query(query, perfil);

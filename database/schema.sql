@@ -1,5 +1,5 @@
 -- Schema único do Backend Tecsys: estrutura do PostgreSQL da AWS.
--- Conferido em 2026-11-04. Não contém dados, credenciais ou permissões de usuários.
+-- Custos do resultado removidos em 2026-11-18; estrutura inicial conferida em 2026-11-04. Não contém dados, credenciais ou permissões de usuários.
 -- Referência para criação de banco vazio; não executar sobre a AWS já provisionada.
 -- A aplicação se conecta ao banco existente e não executa este arquivo automaticamente.
 -- spatial_ref_sys e os tipos/funções espaciais são criados pela extensão PostGIS.
@@ -32,7 +32,6 @@ CREATE TABLE public.cenario_gateways (
     ordem integer,
     quantidade_pontos_atendidos integer,
     capacidade_utilizada_pct numeric,
-    custo_estimado numeric,
     parametros_calculo jsonb,
     mancha_cobertura public.geometry
 );
@@ -62,7 +61,6 @@ CREATE TABLE public.cenarios (
     pontos_nao_cobertos integer,
     percentual_cobertura numeric,
     capacidade_utilizada_media_pct numeric,
-    custo_total_estimado numeric,
     mancha_consolidada public.geometry,
     executado_em timestamp with time zone,
     criado_em timestamp with time zone DEFAULT now() NOT NULL,
@@ -284,7 +282,6 @@ CREATE TABLE public.perfis_rf (
     quantidade_canais integer,
     limite_mensagens_transmissoes integer,
     periodo_limite_mensagens character varying,
-    custo_estimado_gateway numeric,
     caracteristicas_antena jsonb,
     parametros_adicionais jsonb,
     criado_em timestamp with time zone DEFAULT now() NOT NULL,

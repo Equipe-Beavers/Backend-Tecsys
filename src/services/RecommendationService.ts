@@ -1,3 +1,4 @@
+import { GatewayMetadataService } from "./GatewayMetadataService.js";
 import { pool } from "../database/pool.js";
 import type { EstudoPonto } from "../interface/estudo-ponto.js";
 import type { PerfilRf } from "../interface/perfil-rf.js";
@@ -28,7 +29,7 @@ export class RecommendationService {
 
   async generateRecommendation(input: GerarRecomendacaoInput) {
     const studyResult = await pool.query(
-      "SELECT id_estudo FROM estudos WHERE id_estudo = $1 AND id_usuario = $2",
+      "SELECT id_estudo, municipio, bairro, uf FROM estudos WHERE id_estudo = $1 AND id_usuario = $2",
       [input.id_estudo, input.id_usuario]
     );
     const study = studyResult.rows[0];
@@ -101,8 +102,6 @@ export class RecommendationService {
 
     const totalInterest = interestPoints.length;
     const totalCovered = totalInterest - result.pontosNaoCobertos.length;
-    const gatewayCost = (rf as PerfilRf).custo_estimado_gateway ?? 0;
-    const totalCost = result.gateways.length * gatewayCost;
 
     const scenario = await this.scenarioService.createScenario({
       id_estudo: input.id_estudo,
@@ -120,18 +119,23 @@ export class RecommendationService {
         totalInterest > 0
           ? Math.round((totalCovered / totalInterest) * 100)
           : 0,
-      custo_total_estimado: totalCost,
       executado_em: new Date().toISOString(),
     });
 
     const coverageByGateway = new Map<number, Coverage>();
+    const gatewayAttributes = new Map<number, Record<string, unknown>>();
+    const metadata = new GatewayMetadataService();
+    for (const gateway of result.gateways) {
+      gatewayAttributes.set(gateway.candidato.id_estudo_ponto,
+        await metadata.attributes(gateway.candidato, study));
+    }
+
 
     for (const gw of result.gateways) {
       const scenarioGateway = await this.scenarioService.createGatewayScenario({
         id_cenario: scenario.id_cenario,
         id_estudo_ponto: gw.candidato.id_estudo_ponto,
         quantidade_pontos_atendidos: gw.atendimentos.length,
-        custo_estimado: gatewayCost,
       });
 
       for (const at of gw.atendimentos) {
@@ -182,7 +186,6 @@ export class RecommendationService {
         id_cenario: Number(scenario.id_cenario),
         quantidade_gateways: result.gateways.length,
         percentual_cobertura: Number(scenario.percentual_cobertura ?? 0),
-        custo_total_estimado: totalCost,
         pontos_interesse: totalInterest,
         pontos_cobertos: totalCovered,
         pontos_nao_cobertos: result.pontosNaoCobertos.length,
@@ -215,7 +218,7 @@ export class RecommendationService {
           latitude: Number(gw.candidato.latitude),
           longitude: Number(gw.candidato.longitude),
           quantidade_atendidos: gw.atendimentos.length,
-          atributos: gw.candidato.atributos ?? {},
+          atributos: gatewayAttributes.get(gw.candidato.id_estudo_ponto) ?? {},
           mancha_cobertura: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.geometry ?? null,
           alcance_medio_m: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.mean_range_m ?? null,
           modelo_propagacao: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.model ?? null,
