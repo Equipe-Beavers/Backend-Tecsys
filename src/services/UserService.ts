@@ -56,11 +56,12 @@ export class UserService {
     }
   }
 
-  async authenticate(input: LoginUsuario): Promise<UsuarioPublico> {
+  async authenticate(input: LoginUsuario, verified?: (hash: string) => void): Promise<UsuarioPublico> {
     const email = emailValue(input.email);
     const user = await this.repository.findByEmail(email);
     const valid = await this.passwords.verify(input.senha, user?.senha_hash ?? "");
     if (!user || !valid) throw new AuthError(401, "INVALID_CREDENTIALS", "E-mail ou senha inválidos.");
+    verified?.(user.senha_hash);
     return publicUser(user);
   }
 
