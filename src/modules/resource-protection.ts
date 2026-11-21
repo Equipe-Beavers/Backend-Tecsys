@@ -12,6 +12,7 @@ export const protectedResourceRoutes = new Set([
   ...createOwned, ...listOwned,
   "/estudos/:id", "/study/:id", "/study/:id/points", "/estudos/:id/pontos", "/estudos/:id/exportar-pdf",
   "/study/:id/recommendation", "/get-scenario-coverage/:id", "/generate-coverage",
+  "/study/:id/recommendations", "/study/:id/selected-scenario",
   "/create-scenario", "/cenarios", "/create-gateway-scenario", "/cenario-gateways",
   "/create-service-scenario", "/cenario-atendimentos", "/get-install-criterion/:id",
   "/update-install-criterion/:id", "/delete-install-criterion/:id",
