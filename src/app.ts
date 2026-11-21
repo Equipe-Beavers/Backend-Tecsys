@@ -182,6 +182,25 @@ export class App {
       )
     })
 
+    this.app.get("/study/:id/recommendations", { schema: { params: studyParams } }, async (request, reply) => {
+      return recommendationController.ListRecommendations(
+        request as Parameters<RecommendationController["ListRecommendations"]>[0], reply,
+      );
+    });
+    this.app.patch("/study/:id/selected-scenario", {
+      schema: {
+        params: studyParams,
+        body: {
+          type: "object", required: ["id_cenario"], additionalProperties: false,
+          properties: { id_cenario: studyId },
+        },
+      },
+    }, async (request, reply) => {
+      return recommendationController.SelectRecommendation(
+        request as Parameters<RecommendationController["SelectRecommendation"]>[0], reply,
+      );
+    });
+
     // BuildingController (edificações sob demanda da Overture Maps: altura, largura, profundidade e material)
     const frequencyMhz = { type: "number", exclusiveMinimum: 0, maximum: 100000 };
     const linkPoint = {
