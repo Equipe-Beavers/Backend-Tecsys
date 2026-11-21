@@ -142,7 +142,6 @@ describe.skipIf(!isolated)("exportação em PDF com PostgreSQL temporário real"
             pontos_interesse: recommendation.pontos_interesse,
             pontos_cobertos: recommendation.pontos_cobertos,
             pontos_nao_cobertos: recommendation.pontos_nao_cobertos,
-            custo_total_estimado: recommendation.custo_total_estimado,
         });
         expect(recommendation.pontos_interesse).toBe(6);
         expect(recommendation.pontos_nao_cobertos).toBeGreaterThanOrEqual(1);

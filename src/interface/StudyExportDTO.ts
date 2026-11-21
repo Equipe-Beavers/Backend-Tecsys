@@ -61,7 +61,6 @@ export interface ExportIndicators {
     pontos_nao_cobertos: number;
     percentual_cobertura: number;
     capacidade_utilizada_media_pct: number | null;
-    custo_total_estimado: number | null;
 }
 
 export interface ExportRfProfile {
@@ -75,7 +74,6 @@ export interface ExportRfProfile {
     altura_dispositivo_m: number | null;
     capacidade_max_equipamentos: number | null;
     quantidade_canais: number | null;
-    custo_estimado_gateway: number | null;
 }
 
 export interface ExportCriterion {
@@ -84,7 +82,6 @@ export interface ExportCriterion {
     distancia_maxima_ativos_m: number | null;
     altura_minima_m: number | null;
     limite_gateways: number | null;
-    custo_maximo: number | null;
 }
 
 export interface ExportScenario {
@@ -93,7 +90,10 @@ export interface ExportScenario {
     /** "Otimizada" ou "Alt. N", como nas abas da aplicação. */
     rotulo: string;
     otimizado: boolean;
+    /** Cenário em destaque no relatório (aba aberta ou, sem id_cenario, o escolhido/Otimizada). */
     selecionado: boolean;
+    /** Solução final escolhida pelo usuário (status DEFINITIVO, "Usar esta alternativa"). */
+    escolhido: boolean;
     descricao: string | null;
     objetivo: string | null;
     status: string;

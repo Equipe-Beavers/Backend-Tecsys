@@ -30,9 +30,36 @@ import {
 } from "../utils/StudyExportUtils.js";
 import { buildStudyReportPdf } from "../utils/StudyReportPdf.js";
 
+export interface StudyScenarioSummary {
+    id_cenario: number;
+    id_cenario_base: number | null;
+    nome: string;
+    rotulo: string;
+    otimizado: boolean;
+    /** Solução final escolhida (status DEFINITIVO). */
+    escolhido: boolean;
+    executado_em: Date | null;
+}
+
 export interface StudyExportFile {
     fileName: string;
     content: Buffer;
+}
+
+/**
+ * Ordena os cenários do grupo (a Otimizada primeiro, depois as alternativas por id) e
+ * define os rótulos usados na tela e no PDF: "Otimizada", "Alt. 1", "Alt. 2"...
+ */
+function classifyScenarios(rows: Row[]) {
+    const hasBase = (row: Row) => row.id_cenario_base !== null && row.id_cenario_base !== undefined;
+    const ordered = [...rows].sort((a, b) =>
+        Number(hasBase(a)) - Number(hasBase(b)) || Number(a.id_cenario) - Number(b.id_cenario));
+    const optimized = ordered[0]!;
+    const labels = new Map<number, string>();
+    ordered.forEach((row, index) => {
+        labels.set(Number(row.id_cenario), index === 0 ? "Otimizada" : `Alt. ${index}`);
+    });
+    return { ordered, optimized, labels };
 }
 
 export class StudyExportService {
@@ -61,16 +88,15 @@ export class StudyExportService {
             }
         }
 
-        // O otimizado é a recomendação automática: cenário sem base de menor id.
-        // Os demais, na ordem de criação, são Alt. 1, Alt. 2...
-        const byId = [...scenarioRows].sort((a, b) => Number(a.id_cenario) - Number(b.id_cenario));
-        const optimizedRow = byId.find((row) => row.id_cenario_base === null || row.id_cenario_base === undefined) ?? byId[0]!;
-        const labels = new Map<number, string>([[Number(optimizedRow.id_cenario), "Otimizada"]]);
-        byId.filter((row) => row !== optimizedRow).forEach((row, index) => {
-            labels.set(Number(row.id_cenario), `Alt. ${index + 1}`);
-        });
+        // Os cenários já vêm do grupo que a tela mostra: a base é a Otimizada e os cenários
+        // derivados dela são Alt. 1, Alt. 2... (ver findExportScenariosQuery).
+        const { ordered: byId, optimized: optimizedRow, labels } = classifyScenarios(scenarioRows);
 
-        let selectedRow = optimizedRow;
+        // "Escolhido" é o cenário marcado DEFINITIVO ("Usar esta alternativa",
+        // PATCH /study/:id/selected-scenario).
+        const keptRow = [...byId].reverse().find((row) => row.status === "DEFINITIVO");
+        // Destaque: o cenário pedido (aba aberta) ou, sem ele, o escolhido; sem escolha, a Otimizada.
+        let selectedRow = keptRow ?? optimizedRow;
         if (options.id_cenario !== undefined) {
             const found = byId.find((row) => Number(row.id_cenario) === Number(options.id_cenario));
             if (!found) throw new StudyError(404, "Cenário processado não encontrado neste estudo.");
@@ -98,6 +124,7 @@ export class StudyExportService {
                     rotulo: labels.get(id) ?? `Cenário ${id}`,
                     otimizado: row === optimizedRow,
                     selecionado: row === selectedRow,
+                    escolhido: row === keptRow,
                     // Cada mapa pertence a um único cenário; nunca é reaproveitado em outro.
                     imagem: row === selectedRow ? (selectedImage ?? otherImages.get(id) ?? null) : (otherImages.get(id) ?? null),
                 },
@@ -125,6 +152,29 @@ export class StudyExportService {
         return { gerado_em: new Date(), estudo, cenario_selecionado: cenarioSelecionado!, outros_cenarios: outros };
     }
 
+    /**
+     * Cenários processados do estudo, os mesmos que entram no PDF. O frontend
+     * usa a lista para capturar o mapa de cada um (`imagens_mapa`).
+     */
+    async listScenarios(idStudy: number, userId: number): Promise<StudyScenarioSummary[]> {
+        const studyResult = await pool.query(findExportStudyQuery, [idStudy, userId]);
+        if (!studyResult.rows[0]) throw new StudyError(404, "Estudo não encontrado.");
+
+        const { rows } = await pool.query(findExportScenariosQuery, [idStudy]);
+        const { ordered, optimized, labels } = classifyScenarios(rows as Row[]);
+        const kept = [...ordered].reverse().find((row) => row.status === "DEFINITIVO");
+        return ordered.map((row) => ({
+            id_cenario: Number(row.id_cenario),
+            id_cenario_base: row.id_cenario_base === null || row.id_cenario_base === undefined
+                ? null : Number(row.id_cenario_base),
+            nome: toText(row.nome) ?? `Cenário ${String(row.id_cenario)}`,
+            rotulo: labels.get(Number(row.id_cenario)) ?? `Cenário ${String(row.id_cenario)}`,
+            otimizado: row === optimized,
+            escolhido: row === kept,
+            executado_em: toDate(row.executado_em),
+        }));
+    }
+
     async exportPdf(idStudy: number, userId: number, options: StudyExportQuery = {}): Promise<StudyExportFile> {
         const report = await this.getReport(idStudy, userId, options);
         return {
@@ -138,7 +188,7 @@ export class StudyExportService {
         gatewayRows: Row[],
         serviceRows: Row[],
         interestPoints: ExportAsset[],
-        meta: { rotulo: string; otimizado: boolean; selecionado: boolean; imagem: Buffer | null },
+        meta: { rotulo: string; otimizado: boolean; selecionado: boolean; escolhido: boolean; imagem: Buffer | null },
     ): ExportScenario {
         const capacityMax = toNumber(row.capacidade_max_equipamentos);
 
@@ -195,6 +245,7 @@ export class StudyExportService {
             rotulo: meta.rotulo,
             otimizado: meta.otimizado,
             selecionado: meta.selecionado,
+            escolhido: meta.escolhido,
             descricao: toText(row.descricao),
             objetivo: toText(row.objetivo),
             status: String(row.status ?? ""),
@@ -211,7 +262,6 @@ export class StudyExportService {
                 altura_dispositivo_m: toNumber(row.altura_dispositivo_m),
                 capacidade_max_equipamentos: capacityMax,
                 quantidade_canais: toNumber(row.quantidade_canais),
-                custo_estimado_gateway: toNumber(row.custo_estimado_gateway),
             },
             criterio: toText(row.nome_criterio_instalacao) ? {
                 nome: toText(row.nome_criterio_instalacao),
@@ -219,7 +269,6 @@ export class StudyExportService {
                 distancia_maxima_ativos_m: toNumber(row.distancia_maxima_ativos_m),
                 altura_minima_m: toNumber(row.altura_minima_m),
                 limite_gateways: toNumber(row.limite_gateways),
-                custo_maximo: toNumber(row.custo_maximo),
             } : null,
             imagem_mapa: meta.imagem,
             executado_em: toDate(row.executado_em),
@@ -235,7 +284,6 @@ export class StudyExportService {
                     : gatewayCapacities.length > 0
                         ? round(gatewayCapacities.reduce((sum, value) => sum + value, 0) / gatewayCapacities.length)
                         : null,
-                custo_total_estimado: toNumber(row.custo_total_estimado),
             },
             por_categoria: [...categories.values()].sort((a, b) => b.total - a.total),
             gateways,

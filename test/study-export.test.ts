@@ -15,6 +15,7 @@ import {
     sanitizeForPdf,
     toPdfText,
 } from "../src/utils/StudyExportUtils.js";
+import { scenarioLabel, scenarioName, scenarioTitle } from "../src/utils/StudyReportPdf.js";
 import { createTestApp } from "./helpers/create-test-app.js";
 
 const database = vi.hoisted(() => ({ query: vi.fn() }));
@@ -44,17 +45,17 @@ const scenarios = [
     {
         id_cenario: 10, id_cenario_base: null, nome: "Recomendação inicial", descricao: null, objetivo: null, status: "DEFINITIVO",
         quantidade_gateways: 2, pontos_interesse: 4, pontos_cobertos: 3, pontos_nao_cobertos: 1,
-        percentual_cobertura: "75", capacidade_utilizada_media_pct: null, custo_total_estimado: "3000",
+        percentual_cobertura: "75", capacidade_utilizada_media_pct: null,
         executado_em: new Date("2026-11-02T10:00:00Z"), nome_perfil_rf: "LoRa 915", capacidade_max_equipamentos: 4,
         modelo_gateway: "GW-9200", frequencia_mhz: 915, potencia_transmissao_dbm: 14, sensibilidade_recepcao_dbm: -120,
-        alcance_estimado_m: 4200, altura_gateway_m: 15, altura_dispositivo_m: 1.5, quantidade_canais: 8, custo_estimado_gateway: 1500,
+        alcance_estimado_m: 4200, altura_gateway_m: 15, altura_dispositivo_m: 1.5, quantidade_canais: 8,
         nome_criterio_instalacao: "Postes urbanos", distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 40,
-        altura_minima_m: null, limite_gateways: 5, custo_maximo: null,
+        altura_minima_m: null, limite_gateways: 5,
     },
     {
-        id_cenario: 11, id_cenario_base: 10, nome: "Alternativa com 1 gateway", descricao: null, objetivo: null, status: "DEFINITIVO",
+        id_cenario: 11, id_cenario_base: 10, nome: "Alternativa com 1 gateway", descricao: null, objetivo: null, status: "RASCUNHO",
         quantidade_gateways: 1, pontos_interesse: 4, pontos_cobertos: 2, pontos_nao_cobertos: 2,
-        percentual_cobertura: "50", capacidade_utilizada_media_pct: "50", custo_total_estimado: "1500",
+        percentual_cobertura: "50", capacidade_utilizada_media_pct: "50",
         executado_em: new Date("2026-11-03T10:00:00Z"), nome_perfil_rf: "LoRa 915", capacidade_max_equipamentos: 4,
     },
 ];
@@ -114,6 +115,41 @@ beforeEach(() => {
     pdfControl.fail = false;
 });
 
+describe("StudyExportService.listScenarios (cenários para capturar os mapas)", () => {
+    it("lista os cenários processados do estudo do usuário com o rótulo do PDF", async () => {
+        mockDatabase();
+        const list = await new StudyExportService().listScenarios(5, 1);
+
+        expect(database.query).toHaveBeenCalledWith(findExportStudyQuery, [5, 1]);
+        expect(list.map((item) => [item.id_cenario, item.rotulo, item.otimizado])).toEqual([
+            [10, "Otimizada", true],
+            [11, "Alt. 1", false],
+        ]);
+    });
+
+    it("estudo de outro usuário ou inexistente responde 404", async () => {
+        mockDatabase({ study: null });
+        await expect(new StudyExportService().listScenarios(5, 2)).rejects.toMatchObject({ statusCode: 404 });
+    });
+});
+
+describe("StudyExportService.getReport (cenário escolhido)", () => {
+    it("sem id_cenario destaca o cenário mantido no estudo (DEFINITIVO)", async () => {
+        mockDatabase({ scenarios: [{ ...scenarios[0]!, status: "RASCUNHO" }, { ...scenarios[1]!, status: "DEFINITIVO" }] });
+        const report = await new StudyExportService().getReport(5, 1);
+
+        expect(report.cenario_selecionado).toMatchObject({ id_cenario: 11, rotulo: "Alt. 1", selecionado: true, otimizado: false });
+        expect(report.outros_cenarios[0]).toMatchObject({ id_cenario: 10, rotulo: "Otimizada", otimizado: true, selecionado: false });
+    });
+
+    it("sem cenário mantido destaca a Otimizada", async () => {
+        mockDatabase({ scenarios: scenarios.map((row) => ({ ...row, status: "RASCUNHO" })) });
+        const report = await new StudyExportService().getReport(5, 1);
+
+        expect(report.cenario_selecionado).toMatchObject({ id_cenario: 10, otimizado: true, selecionado: true });
+    });
+});
+
 describe("StudyExportService.getReport (recupera o estudo e os resultados)", () => {
     it("busca o estudo do usuário e, sem id_cenario, exibe o cenário otimizado", async () => {
         mockDatabase();
@@ -122,14 +158,15 @@ describe("StudyExportService.getReport (recupera o estudo e os resultados)", () 
         expect(database.query).toHaveBeenCalledWith(findExportStudyQuery, [5, 1]);
         expect(report.estudo).toMatchObject({
             id_estudo: 5, nome: "Estudo Centro São José",
-            regiao: "Centro, São José dos Campos - SP (Distribuidora: EDP SP)",
+            regiao: "Centro, São José dos Campos - SP",
+            distribuidora: "EDP SP",
             nome_perfil_rf: "LoRa 915", nome_criterio_instalacao: "Postes urbanos",
         });
         expect(report.cenario_selecionado).toMatchObject({ id_cenario: 10, rotulo: "Otimizada", otimizado: true, selecionado: true });
         expect(report.outros_cenarios.map((scenario) => scenario.id_cenario)).toEqual([11]);
         expect(report.cenario_selecionado.indicadores).toMatchObject({
             quantidade_gateways: 2, pontos_interesse: 4, pontos_cobertos: 3, pontos_nao_cobertos: 1,
-            percentual_cobertura: 75, custo_total_estimado: 3000,
+            percentual_cobertura: 75,
         });
         expect(database.query).toHaveBeenCalledWith(findExportGatewaysQuery, [[10, 11]]);
     });
@@ -237,6 +274,68 @@ describe("StudyExportService.getReport (recupera o estudo e os resultados)", () 
     });
 });
 
+describe("rótulos e solução final escolhida", () => {
+    it("só considera o grupo atual de cenários (Otimizada e alternativas derivadas dela)", () => {
+        expect(findExportScenariosQuery).toMatch(/COALESCE\(c\.id_cenario_base, c\.id_cenario\)/);
+        expect(findExportScenariosQuery).toMatch(/id_perfil_rf = e\.id_perfil_rf/);
+        expect(findExportScenariosQuery).toMatch(/ORDER BY c\.id_cenario_base NULLS FIRST, c\.id_cenario/);
+    });
+
+    it("rotula a base como Otimizada e as derivadas como Alt. 1 a Alt. 5, sem contar a Otimizada como alternativa", async () => {
+        const group = [
+            { ...scenarios[0]!, id_cenario: 93, id_cenario_base: null, nome: "Otimizada", status: "RASCUNHO" },
+            ...[1, 2, 3, 4, 5].map((n) => ({
+                ...scenarios[1]!, id_cenario: 93 + n, id_cenario_base: 93, nome: `Alternativa ${n}`,
+                status: n === 1 ? "DEFINITIVO" : "RASCUNHO",
+            })),
+        ];
+        mockDatabase({ scenarios: group });
+        const list = await new StudyExportService().listScenarios(5, 1);
+
+        expect(list.map((item) => item.rotulo)).toEqual(["Otimizada", "Alt. 1", "Alt. 2", "Alt. 3", "Alt. 4", "Alt. 5"]);
+        expect(list.filter((item) => item.escolhido).map((item) => item.rotulo)).toEqual(["Alt. 1"]);
+
+        const report = await new StudyExportService().getReport(5, 1);
+        expect([report.cenario_selecionado, ...report.outros_cenarios].map((item) => item.rotulo))
+            .toEqual(["Alt. 1", "Otimizada", "Alt. 2", "Alt. 3", "Alt. 4", "Alt. 5"]);
+    });
+
+    it("destaca o cenário pedido e marca como escolhido o DEFINITIVO, que pode ser outro", async () => {
+        mockDatabase({ scenarios: [{ ...scenarios[0]!, status: "RASCUNHO" }, { ...scenarios[1]!, status: "DEFINITIVO" }] });
+        const report = await new StudyExportService().getReport(5, 1, { id_cenario: 10 });
+
+        expect(report.cenario_selecionado).toMatchObject({ id_cenario: 10, selecionado: true, escolhido: false });
+        expect(report.outros_cenarios[0]).toMatchObject({ id_cenario: 11, selecionado: false, escolhido: true });
+    });
+
+    it("sem nenhum DEFINITIVO, não declara solução final escolhida", async () => {
+        mockDatabase({ scenarios: scenarios.map((row) => ({ ...row, status: "RASCUNHO" })) });
+        const report = await new StudyExportService().getReport(5, 1);
+        expect([report.cenario_selecionado, ...report.outros_cenarios].some((item) => item.escolhido)).toBe(false);
+    });
+
+    it("não repete o rótulo quando o nome não acrescenta nada", () => {
+        const base = { otimizado: false, selecionado: false, escolhido: false } as never;
+        const make = (rotulo: string, nome: string, escolhido = false) =>
+            ({ ...(base as object), rotulo, nome, escolhido }) as Parameters<typeof scenarioName>[0];
+
+        expect(scenarioName(make("Otimizada", "Otimizada"))).toBe("Otimizada");
+        expect(scenarioName(make("Alt. 1", "Alternativa 1"))).toBe("Alternativa 1");
+        expect(scenarioName(make("Alt. 2", "alternativa 2"))).toBe("Alternativa 2");
+        expect(scenarioName(make("Alt. 3", "Alt. 3"))).toBe("Alternativa 3");
+        expect(scenarioLabel(make("Alt. 4", "x"))).toBe("Alternativa 4");
+    });
+
+    it("mantém o nome personalizado junto do rótulo e indica a solução final escolhida", () => {
+        const make = (rotulo: string, nome: string, escolhido: boolean) =>
+            ({ rotulo, nome, escolhido }) as Parameters<typeof scenarioName>[0];
+
+        expect(scenarioTitle(make("Alt. 2", "Baixo custo", false))).toBe("Alternativa 2 - Baixo custo");
+        expect(scenarioName(make("Alt. 2", "Baixo custo", true))).toBe("Alternativa 2 - Baixo custo (solução final escolhida)");
+        expect(scenarioName(make("Alt. 1", "Alternativa 1", true))).toBe("Alternativa 1 (solução final escolhida)");
+    });
+});
+
 describe("auxiliares da exportação", () => {
     it("gera nome de arquivo sem acentos nem caracteres especiais", () => {
         expect(buildExportFileName(5, "Estudo Centro / São José!")).toBe("relatorio-estudo-5-estudo-centro-sao-jose.pdf");
@@ -246,6 +345,13 @@ describe("auxiliares da exportação", () => {
     it("descreve a região pela delimitação quando não há localização", () => {
         expect(describeRegion({ tipo_delimitacao: "desenho" })).toBe("Área desenhada no mapa");
         expect(describeRegion({})).toBe("Não informada");
+    });
+
+    it("mostra só a localização geográfica na região, sem a distribuidora", () => {
+        expect(describeRegion({ bairro: "Centro", municipio: "São José dos Campos", uf: "SP", distribuidora: "EDP SP" }))
+            .toBe("Centro, São José dos Campos - SP");
+        expect(describeRegion({ uf: "SP", distribuidora: "EDP SP" })).toBe("SP");
+        expect(describeRegion({ tipo_delimitacao: "selecao", distribuidora: "EDP SP" })).toBe("Área selecionada no mapa");
     });
 
     it("mostra os tipos de ativo com os mesmos nomes da aplicação", () => {

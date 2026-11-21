@@ -34,9 +34,24 @@ const imagem_mapa = map.getCanvas().toDataURL("image/png");   // Mapbox: criar o
 - Cenário sem imagem enviada: o PDF mostra o aviso "a imagem do mapa deste cenário não foi enviada" (nunca usa o mapa de outro cenário).
 - `imagens_mapa` com id de cenário que não pertence ao estudo → 400.
 
-### Otimizada × Alt. N
+Para saber quais cenários capturar, use `GET /estudos/:id/cenarios` (autenticado, só estudos do usuário; 404 caso contrário). Devolve os mesmos cenários processados que entram no PDF:
 
-Regra aplicada pelo backend (sem alterar o banco): **Otimizada** = cenário sem `id_cenario_base` de menor `id_cenario` (a recomendação automática). Os demais, na ordem de criação, são **Alt. 1, Alt. 2...**
+```json
+[
+  { "id_cenario": 10, "id_cenario_base": null, "nome": "Otimizada", "rotulo": "Otimizada", "otimizado": true, "escolhido": false, "executado_em": "2026-11-14T11:20:00.000Z" },
+  { "id_cenario": 11, "id_cenario_base": 10, "nome": "Alternativa 1", "rotulo": "Alt. 1", "otimizado": false, "escolhido": true, "executado_em": "2026-11-14T11:40:00.000Z" }
+]
+```
+
+### Otimizada × Alt. N × solução final escolhida
+
+O PDF usa o **mesmo grupo de cenários que a tela** (`GET /study/:id/recommendations`): a base mais recente do perfil de RF e do critério do estudo e as alternativas derivadas dela. Cenários de grupos antigos, já substituídos, não entram no relatório.
+
+- **Otimizada**: o cenário-base do grupo (sem `id_cenario_base`).
+- **Alt. 1, Alt. 2...**: os cenários derivados da base, em ordem de criação (a Otimizada nunca conta como alternativa).
+- **Solução final escolhida**: o cenário com status `DEFINITIVO` ("Usar esta alternativa", `PATCH /study/:id/selected-scenario`). Aparece na identificação do estudo, ao lado do nome do cenário e nas considerações finais. Sem cenário escolhido, o PDF informa isso.
+- **Alternativa selecionada (destaque)**: o `id_cenario` enviado; sem ele, o escolhido ou, se não houver, a Otimizada. É o cenário detalhado nas seções 3 a 6.
+- Quando o nome do cenário é só o rótulo ("Otimizada", "Alternativa 1"), o PDF mostra apenas o rótulo; nomes personalizados aparecem junto do rótulo.
 
 ## Resposta de sucesso — `200 OK`
 
@@ -90,6 +105,10 @@ URL.revokeObjectURL(url);
 
 ## Conteúdo do PDF
 
-1. Identificação do estudo · 2. Informações gerais (perfil de RF e critério de instalação) · 3. Resumo dos resultados · 4. Mapa geográfico (com legenda) · 5. Gateways propostos · 6. Ativos elétricos (por categoria, atendidos e não atendidos — lista completa) · 7. Demais cenários do estudo* · 8. Comparativo entre cenários* · 9. Considerações finais.
+1. Identificação do estudo · 2. Informações gerais (perfil de RF e critério de instalação) · 3. Resumo da alternativa selecionada · 4. Mapa geográfico (com legenda) · 5. Gateways propostos · 6. Ativos elétricos (por categoria, atendidos e não atendidos — lista completa) · 7. Demais cenários do estudo* · 8. Comparativo entre cenários* · 9. Considerações finais.
 
 \* Só se o estudo tiver outros cenários. Cabeçalho do estudo em todas as páginas e rodapé com paginação.
+
+- O identificador e a descrição do estudo não aparecem no relatório, e nenhum valor de custo é exibido nem consultado.
+- "Região analisada" mostra só a localização (bairro, município e UF); a distribuidora aparece apenas no campo "Distribuidora".
+- Não há quebras de página forçadas: as seções seguem em sequência e só mudam de página quando não cabem.

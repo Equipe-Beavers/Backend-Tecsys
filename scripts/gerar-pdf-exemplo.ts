@@ -108,7 +108,7 @@ const toCoordinates = (x: number, y: number) => ({
 });
 
 function buildScenario(options: {
-    id: number; nome: string; rotulo: string; gatewayCount: number; otimizado: boolean; selecionado: boolean; executadoEm: Date; custoGateway: number; imagem: Buffer | null;
+    id: number; nome: string; rotulo: string; gatewayCount: number; otimizado: boolean; selecionado: boolean; executadoEm: Date; imagem: Buffer | null;
 }): ExportScenario {
     const activeGateways = gatewaySpots.slice(0, options.gatewayCount);
     const gateways: ExportGateway[] = activeGateways.map((spot, index) => ({
@@ -166,6 +166,7 @@ function buildScenario(options: {
         rotulo: options.rotulo,
         otimizado: options.otimizado,
         selecionado: options.selecionado,
+        escolhido: options.selecionado,
         descricao: null,
         objetivo: null,
         status: "DEFINITIVO",
@@ -174,11 +175,11 @@ function buildScenario(options: {
         perfil_rf: {
             nome: "GW-9200 · LoRaWAN", modelo_gateway: "GW-9200", frequencia_mhz: 915, potencia_transmissao_dbm: 8,
             sensibilidade_recepcao_dbm: -137, alcance_estimado_m: 4200, altura_gateway_m: 12, altura_dispositivo_m: 1.5,
-            capacidade_max_equipamentos: capacidadeMax, quantidade_canais: 8, custo_estimado_gateway: options.custoGateway,
+            capacidade_max_equipamentos: capacidadeMax, quantidade_canais: 8,
         },
         criterio: {
             nome: "Padrão urbano", distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 40,
-            altura_minima_m: null, limite_gateways: null, custo_maximo: null,
+            altura_minima_m: null, limite_gateways: null,
         },
         imagem_mapa: options.imagem,
         executado_em: options.executadoEm,
@@ -191,7 +192,6 @@ function buildScenario(options: {
             capacidade_utilizada_media_pct: gateways.length > 0
                 ? Math.round((gateways.reduce((sum, g) => sum + (g.capacidade_utilizada_pct ?? 0), 0) / gateways.length) * 10) / 10
                 : null,
-            custo_total_estimado: gateways.length * options.custoGateway,
         },
         por_categoria: categorias,
         gateways,
@@ -208,7 +208,7 @@ async function main() {
     const mapa = mapArg
         ? readFileSync(resolve(mapArg))
         : drawDemoMap(gatewaySpots, assetSpots.map((spot, index) => ({ ...spot, covered: coveredFlags[index]! })));
-    const selecionado = buildScenario({ id: 3, nome: "Recomendação principal", rotulo: "Otimizada", gatewayCount: 6, otimizado: true, selecionado: true, executadoEm: agora, custoGateway: 1500, imagem: mapa });
+    const selecionado = buildScenario({ id: 3, nome: "Recomendação principal", rotulo: "Otimizada", gatewayCount: 6, otimizado: true, selecionado: true, executadoEm: agora, imagem: mapa });
     const report: StudyExportReport = {
         gerado_em: agora,
         estudo: {
@@ -229,8 +229,8 @@ async function main() {
         },
         cenario_selecionado: selecionado,
         outros_cenarios: [
-            buildScenario({ id: 4, nome: "Alternativa econômica", rotulo: "Alt. 1", gatewayCount: 3, otimizado: false, selecionado: false, executadoEm: new Date(agora.getTime() - 86400000), custoGateway: 1500, imagem: mapa }),
-            buildScenario({ id: 5, nome: "Alternativa intermediária", rotulo: "Alt. 2", gatewayCount: 4, otimizado: false, selecionado: false, executadoEm: new Date(agora.getTime() - 43200000), custoGateway: 1500, imagem: null }),
+            buildScenario({ id: 4, nome: "Alternativa econômica", rotulo: "Alt. 1", gatewayCount: 3, otimizado: false, selecionado: false, executadoEm: new Date(agora.getTime() - 86400000), imagem: mapa }),
+            buildScenario({ id: 5, nome: "Alternativa intermediária", rotulo: "Alt. 2", gatewayCount: 4, otimizado: false, selecionado: false, executadoEm: new Date(agora.getTime() - 43200000), imagem: null }),
         ],
     };
 

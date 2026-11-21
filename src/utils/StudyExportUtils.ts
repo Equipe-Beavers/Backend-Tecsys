@@ -60,10 +60,7 @@ export function describeRegion(study: Row): string {
     const place = [toText(study.bairro), toText(study.municipio)].filter(Boolean).join(", ");
     const uf = toText(study.uf);
     const local = place && uf ? `${place} - ${uf}` : place || uf || "";
-    const distribuidora = toText(study.distribuidora);
-    if (local && distribuidora) return `${local} (Distribuidora: ${distribuidora})`;
     if (local) return local;
-    if (distribuidora) return `Distribuidora: ${distribuidora}`;
     const delimitacao: Record<string, string> = {
         desenho: "Área desenhada no mapa",
         selecao: "Área selecionada no mapa",

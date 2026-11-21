@@ -38,10 +38,6 @@ function formatPercent(value: number | null): string {
     return value === null ? "-" : `${formatNumber(value, Number.isInteger(value) ? 0 : 1)}%`;
 }
 
-function formatCurrency(value: number | null): string {
-    return value === null ? "-" : value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
 function formatCoordinate(value: number | null): string {
     return value === null ? "-" : value.toFixed(6);
 }
@@ -59,7 +55,9 @@ function ensureSpace(doc: Doc, height: number): void {
 }
 
 function sectionTitle(doc: Doc, title: string): void {
-    ensureSpace(doc, 50);
+    // Reserva espaço para o título e o início do conteúdo, sem deixar o título
+    // sozinho no fim da página.
+    ensureSpace(doc, 90);
     doc.moveDown(0.8);
     const y = doc.y;
     doc.font("Helvetica-Bold").fontSize(13).fillColor(COLORS.primary).text(title, MARGIN, y);
@@ -69,7 +67,7 @@ function sectionTitle(doc: Doc, title: string): void {
 }
 
 function subTitle(doc: Doc, title: string): void {
-    ensureSpace(doc, 40);
+    ensureSpace(doc, 70);
     doc.moveDown(0.5);
     doc.font("Helvetica-Bold").fontSize(11).fillColor(COLORS.text).text(title, MARGIN, doc.y);
     doc.moveDown(0.3);
@@ -193,12 +191,20 @@ function mapSection(doc: Doc, scenario: ExportScenario): void {
         return;
     }
     const maxWidth = contentWidth(doc);
-    const maxHeight = 360;
+    // Usa o espaço que sobra na página (até 360 pt); só muda de página quando
+    // sobra pouco, para não deixar um vazio grande antes do mapa.
+    const minHeight = 200;
+    const reserved = 40 + 24; // texto e legenda abaixo do mapa
+    let available = bottomLimit(doc) - doc.y - reserved;
+    if (available < minHeight) {
+        doc.addPage();
+        available = bottomLimit(doc) - doc.y - reserved;
+    }
+    const maxHeight = Math.min(360, available);
     const scale = Math.min(maxWidth / opened.width, maxHeight / opened.height);
     const width = opened.width * scale;
     const height = opened.height * scale;
 
-    ensureSpace(doc, height + 40);
     const x = MARGIN + (maxWidth - width) / 2;
     const y = doc.y;
     doc.image(image, x, y, { width, height });
@@ -242,7 +248,6 @@ function rfParameters(profile: ExportRfProfile | null): Array<[string, string]> 
         ...optional("Altura do dispositivo", unit(profile.altura_dispositivo_m, "m", 1)),
         ...optional("Capacidade por gateway", unit(profile.capacidade_max_equipamentos, "equipamentos")),
         ...optional("Quantidade de canais", unit(profile.quantidade_canais, "")),
-        ...optional("Custo estimado por gateway", profile.custo_estimado_gateway === null ? null : formatCurrency(profile.custo_estimado_gateway)),
     ];
 }
 
@@ -256,7 +261,6 @@ function criterionParameters(criterion: ExportCriterion | null): Array<[string, 
         ...optional("Distância máxima aos ativos", unit(criterion.distancia_maxima_ativos_m, "m")),
         ...optional("Altura mínima", unit(criterion.altura_minima_m, "m")),
         ...optional("Limite de gateways", unit(criterion.limite_gateways, "")),
-        ...optional("Custo máximo", criterion.custo_maximo === null ? null : formatCurrency(criterion.custo_maximo)),
     ];
 }
 
@@ -332,14 +336,33 @@ function assetTables(doc: Doc, scenario: ExportScenario): void {
     ]), "Todos os ativos de interesse foram atendidos.");
 }
 
+/** "Alt. 2" vira "Alternativa 2"; "Otimizada" fica como está. */
+export function scenarioLabel(scenario: ExportScenario): string {
+    return scenario.rotulo.replace(/^Alt\.?\s*/i, "Alternativa ");
+}
+
+/** Nomes automáticos ("Otimizada", "Alternativa 3", "Alt. 3") não acrescentam nada ao rótulo. */
+function isGenericName(name: string): boolean {
+    const normalized = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+    return /^(otimizada|alternativa\s*\d+|alt\.?\s*\d+)$/.test(normalized);
+}
+
+/** Rótulo, seguido do nome só quando ele traz informação: "Otimizada", "Alternativa 2 - Baixo custo". */
+export function scenarioTitle(scenario: ExportScenario): string {
+    const label = scenarioLabel(scenario);
+    return isGenericName(scenario.nome) ? label : `${label} - ${scenario.nome}`;
+}
+
+export function scenarioName(scenario: ExportScenario): string {
+    return scenario.escolhido ? `${scenarioTitle(scenario)} (solução final escolhida)` : scenarioTitle(scenario);
+}
+
 function scenarioBlock(doc: Doc, scenario: ExportScenario): void {
     keyValues(doc, [
-        ["Cenário", `${scenario.rotulo} - ${scenario.nome}`],
-        ...(scenario.descricao ? [["Descrição", scenario.descricao] as [string, string]] : []),
+        ["Cenário", scenarioName(scenario)],
         ["Perfil RF", scenario.nome_perfil_rf ?? "-"],
         ["Capacidade por gateway", scenario.capacidade_max_equipamentos !== null
             ? `${formatNumber(scenario.capacidade_max_equipamentos)} equipamentos` : "Não informada"],
-        ["Custo total estimado", formatCurrency(scenario.indicadores.custo_total_estimado)],
         ["Processado em", formatDate(scenario.executado_em)],
     ]);
     doc.moveDown(0.4);
@@ -363,7 +386,11 @@ function paragraph(doc: Doc, text: string): void {
 function finalConsiderations(doc: Doc, report: StudyExportReport): void {
     const main = report.cenario_selecionado;
     const { indicadores } = main;
-    paragraph(doc, `No estudo "${report.estudo.nome}", o cenário ${main.rotulo} (${main.nome}) utiliza `
+    const chosen = [main, ...report.outros_cenarios].find((scenario) => scenario.escolhido);
+    paragraph(doc, chosen
+        ? `A solução final escolhida para o estudo "${report.estudo.nome}" é ${scenarioTitle(chosen)}.`
+        : `Nenhuma alternativa foi marcada como solução final do estudo "${report.estudo.nome}" até o momento.`);
+    paragraph(doc, `A alternativa selecionada, ${scenarioTitle(main)}, utiliza `
         + `${formatNumber(indicadores.quantidade_gateways)} gateway(s) e atende ${formatNumber(indicadores.pontos_cobertos)} de `
         + `${formatNumber(indicadores.pontos_interesse)} ativos de interesse (${formatPercent(indicadores.percentual_cobertura)} de cobertura).`);
 
@@ -383,7 +410,7 @@ function finalConsiderations(doc: Doc, report: StudyExportReport): void {
         const bestCoverage = Math.max(...all.map((scenario) => scenario.indicadores.percentual_cobertura));
         const fewest = Math.min(...all.map((scenario) => scenario.indicadores.quantidade_gateways));
         const names = (predicate: (scenario: ExportScenario) => boolean) =>
-            all.filter(predicate).map((scenario) => scenario.rotulo).join(", ");
+            all.filter(predicate).map((scenario) => scenarioLabel(scenario)).join(", ");
         paragraph(doc, `Entre os ${all.length} cenários comparados, a maior cobertura (${formatPercent(bestCoverage)}) é de: `
             + `${names((scenario) => scenario.indicadores.percentual_cobertura === bestCoverage)}; o menor número de gateways `
             + `(${formatNumber(fewest)}) é de: ${names((scenario) => scenario.indicadores.quantidade_gateways === fewest)}.`);
@@ -403,7 +430,7 @@ function header(doc: Doc, report: StudyExportReport): void {
     doc.font("Helvetica-Bold").fontSize(18).fillColor("#FFFFFF")
         .text(report.estudo.nome, MARGIN, 52, { width, height: 24, ellipsis: true });
     doc.font("Helvetica").fontSize(9).fillColor("#C9D6E3")
-        .text(`Estudo nº ${report.estudo.id_estudo} · Gerado em ${formatDate(report.gerado_em)}`, MARGIN, 78, { width });
+        .text(`Gerado em ${formatDate(report.gerado_em)}`, MARGIN, 78, { width });
     doc.y = 118;
 }
 
@@ -419,7 +446,7 @@ function pageDecorations(doc: Doc, report: StudyExportReport): void {
             doc.font("Helvetica-Bold").fontSize(8).fillColor(COLORS.primary)
                 .text("GEOMASH", MARGIN, 20, { width: 60, lineBreak: false });
             doc.font("Helvetica").fontSize(8).fillColor(COLORS.muted)
-                .text(`Estudo nº ${report.estudo.id_estudo} · ${report.estudo.nome}`, MARGIN + 60, 20,
+                .text(report.estudo.nome, MARGIN + 60, 20,
                     { width: contentWidth(doc) - 60, align: "right", lineBreak: false, ellipsis: true });
             doc.moveTo(MARGIN, 32).lineTo(MARGIN + contentWidth(doc), 32).lineWidth(0.5).strokeColor(COLORS.border).stroke();
         }
@@ -454,17 +481,17 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
 
         try {
             const { estudo, cenario_selecionado: main, outros_cenarios: others } = report;
+            const chosen = [main, ...others].find((scenario) => scenario.escolhido);
             header(doc, report);
 
+            // Identificador e descrição do estudo não entram no relatório.
             sectionTitle(doc, "1. Identificação do estudo");
             keyValues(doc, [
                 ["Nome do estudo", estudo.nome],
-                ["Identificador", String(estudo.id_estudo)],
                 ["Região analisada", estudo.regiao],
                 ...optional("Distribuidora", estudo.distribuidora),
-                ...(estudo.descricao ? [["Descrição", estudo.descricao] as [string, string]] : []),
                 ...optional("Versão BDGD", estudo.versao_bdgd),
-                ["Cenário exibido", `${main.rotulo} - ${main.nome}`],
+                ["Solução final escolhida", chosen ? scenarioTitle(chosen) : "Nenhuma alternativa escolhida até o momento"],
                 ["Criado em", formatDate(estudo.criado_em)],
                 ["Data de geração", formatDate(report.gerado_em)],
             ]);
@@ -472,11 +499,11 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
             sectionTitle(doc, "2. Informações gerais");
             keyValues(doc, [...rfParameters(main.perfil_rf), ...criterionParameters(main.criterio)]);
 
-            sectionTitle(doc, `3. Resumo dos resultados - ${main.rotulo}`);
+            sectionTitle(doc, "3. Resumo da alternativa selecionada");
+            keyValues(doc, [["Alternativa selecionada", scenarioName(main)]]);
             scenarioIndicators(doc, main);
-            keyValues(doc, [["Custo total estimado", formatCurrency(main.indicadores.custo_total_estimado)]]);
 
-            sectionTitle(doc, "4. Mapa geográfico");
+            sectionTitle(doc, `4. Mapa geográfico - ${scenarioLabel(main)}`);
             mapSection(doc, main);
 
             sectionTitle(doc, `5. Gateways propostos (${formatNumber(main.gateways.length)})`);
@@ -489,12 +516,13 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
 
             let number = 7;
             if (others.length > 0) {
-                doc.addPage();
+                // Sem quebras de página forçadas: cada bloco segue o anterior e
+                // só muda de página quando não cabe.
                 sectionTitle(doc, `${number}. Demais cenários do estudo`);
                 number += 1;
                 others.forEach((scenario, index) => {
-                    if (index > 0) doc.addPage();
-                    subTitle(doc, `${scenario.rotulo} - ${scenario.nome}`);
+                    if (index > 0) doc.moveDown(0.8);
+                    subTitle(doc, scenarioName(scenario));
                     scenarioBlock(doc, scenario);
                 });
 
@@ -503,21 +531,19 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
                 sectionTitle(doc, `${number}. Comparativo entre cenários`);
                 number += 1;
                 table(doc, [
-                    { header: "Cenário", width: 3.6 },
+                    { header: "Cenário", width: 4.8 },
                     { header: "Gateways", width: 1.5, align: "right" },
                     { header: "Cobertura", width: 1.6, align: "right" },
                     { header: "Atendidos", width: 1.6, align: "right" },
                     { header: "Não atendidos", width: 1.8, align: "right" },
                     { header: "Capacidade média", width: 1.9, align: "right" },
-                    { header: "Custo estimado", width: 2.2, align: "right" },
                 ], all.map((scenario) => [
-                    `${scenario.rotulo} - ${scenario.nome}${scenario.selecionado ? " (exibido)" : ""}`,
+                    scenarioName(scenario),
                     formatNumber(scenario.indicadores.quantidade_gateways),
                     formatPercent(scenario.indicadores.percentual_cobertura),
                     formatNumber(scenario.indicadores.pontos_cobertos),
                     formatNumber(scenario.indicadores.pontos_nao_cobertos),
                     formatPercent(scenario.indicadores.capacidade_utilizada_media_pct),
-                    formatCurrency(scenario.indicadores.custo_total_estimado),
                 ]));
             }
 
