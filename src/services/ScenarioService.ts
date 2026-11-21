@@ -64,18 +64,17 @@ export class ScenarioService {
       scenarioData.pontos_nao_cobertos ?? null,
       scenarioData.percentual_cobertura ?? null,
       scenarioData.capacidade_utilizada_media_pct ?? null,
-      scenarioData.custo_total_estimado ?? null,
       scenarioData.mancha_consolidada ? JSON.stringify(scenarioData.mancha_consolidada) : null,
       scenarioData.executado_em ?? null,
     ];
 
     const query = `
       INSERT INTO cenarios
-      (id_estudo, id_perfil_rf, id_criterio_instalacao, id_cenario_base, nome, descricao, objetivo, status, quantidade_gateways, pontos_interesse, pontos_cobertos, pontos_nao_cobertos, percentual_cobertura, capacidade_utilizada_media_pct, custo_total_estimado, mancha_consolidada, executado_em)
+      (id_estudo, id_perfil_rf, id_criterio_instalacao, id_cenario_base, nome, descricao, objetivo, status, quantidade_gateways, pontos_interesse, pontos_cobertos, pontos_nao_cobertos, percentual_cobertura, capacidade_utilizada_media_pct, mancha_consolidada, executado_em)
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        CASE WHEN $16::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($16) END,
-        $17
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+        CASE WHEN $15::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($15) END,
+        $16
       ) RETURNING *;
     `;
 
@@ -142,17 +141,16 @@ export class ScenarioService {
       scenarioData.ordem ?? null,
       scenarioData.quantidade_pontos_atendidos ?? null,
       scenarioData.capacidade_utilizada_pct ?? null,
-      scenarioData.custo_estimado ?? null,
       scenarioData.parametros_calculo ?? null,
       scenarioData.mancha_cobertura ? JSON.stringify(scenarioData.mancha_cobertura) : null,
     ];
 
     const query = `
       INSERT INTO cenario_gateways
-      (id_cenario, id_estudo_ponto, ordem, quantidade_pontos_atendidos, capacidade_utilizada_pct, custo_estimado, parametros_calculo, mancha_cobertura)
+      (id_cenario, id_estudo_ponto, ordem, quantidade_pontos_atendidos, capacidade_utilizada_pct, parametros_calculo, mancha_cobertura)
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7,
-        CASE WHEN $8::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($8) END
+        $1, $2, $3, $4, $5, $6,
+        CASE WHEN $7::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($7) END
       ) RETURNING *;
     `;
 

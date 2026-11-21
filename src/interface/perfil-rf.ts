@@ -14,7 +14,6 @@ export interface PerfilRf {
     quantidade_canais: number | null;
     limite_mensagens_transmissoes: number | null;
     periodo_limite_mensagens: string | null;
-    custo_estimado_gateway: number | null;
     caracteristicas_antena: Record<string, unknown> | null;
     parametros_adicionais: Record<string, unknown> | null;
     criado_em: string;
@@ -35,7 +34,6 @@ export interface CriarPerfilRf {
     quantidade_canais?: number | null;
     limite_mensagens_transmissoes?: number | null;
     periodo_limite_mensagens?: string | null;
-    custo_estimado_gateway?: number | null;
     caracteristicas_antena?: Record<string, unknown> | null;
     parametros_adicionais?: Record<string, unknown> | null;
 }

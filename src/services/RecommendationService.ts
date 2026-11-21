@@ -1,3 +1,4 @@
+import { GatewayMetadataService } from "./GatewayMetadataService.js";
 import { pool } from "../database/pool.js";
 import type { EstudoPonto } from "../interface/estudo-ponto.js";
 import type { PerfilRf } from "../interface/perfil-rf.js";
@@ -44,9 +45,9 @@ export class RecommendationService {
   }
 
   async generateRecommendation(input: GerarRecomendacaoInput) {
-    const { rows: studies } = await pool.query(
-      "SELECT id_estudo FROM estudos WHERE id_estudo = $1 AND id_usuario = $2",
-      [input.id_estudo, input.id_usuario],
+    const studyResult = await pool.query(
+      "SELECT id_estudo, municipio, bairro, uf FROM estudos WHERE id_estudo = $1 AND id_usuario = $2",
+      [input.id_estudo, input.id_usuario]
     );
     if (!studies[0]) throw new Error("Estudo não encontrado.");
     const { rows: profiles } = await pool.query(
@@ -204,49 +205,49 @@ export class RecommendationService {
       executado_em: new Date().toISOString(),
     });
 
-  async selectRecommendation(studyId: number, scenarioId: number, userId: number) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const study = await client.query("SELECT id_estudo FROM estudos WHERE id_estudo = $1 AND id_usuario = $2 FOR UPDATE", [studyId, userId]);
-      if (!study.rows[0]) throw new Error("Estudo não encontrado.");
-      const scenario = await client.query(`
-        SELECT c.id_cenario FROM cenarios c JOIN estudos e ON e.id_estudo = c.id_estudo
-        WHERE c.id_cenario = $1 AND c.id_estudo = $2 AND e.id_usuario = $3
-          AND COALESCE(c.id_cenario_base, c.id_cenario) = (
-            SELECT MAX(base.id_cenario) FROM cenarios base WHERE base.id_estudo = e.id_estudo
-              AND base.id_cenario_base IS NULL AND base.id_perfil_rf = e.id_perfil_rf
-              AND base.id_criterio_instalacao IS NOT DISTINCT FROM e.id_criterio_instalacao
-          )`, [scenarioId, studyId, userId]);
-      if (!scenario.rows[0]) throw new Error("Cenário não encontrado no grupo atual deste estudo.");
-      await client.query("UPDATE cenarios SET status = 'RASCUNHO', atualizado_em = NOW() WHERE id_estudo = $1 AND status = 'DEFINITIVO'", [studyId]);
-      await client.query("UPDATE cenarios SET status = 'DEFINITIVO', atualizado_em = NOW() WHERE id_cenario = $1 AND id_estudo = $2", [scenarioId, studyId]);
-      await client.query("COMMIT");
-      return { id_cenario_selecionado: scenarioId };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
+    const scenario = await this.scenarioService.createScenario({
+      id_estudo: input.id_estudo,
+      id_perfil_rf: input.id_perfil_rf,
+      id_criterio_instalacao: input.id_criterio_instalacao ?? null,
+      nome:
+        input.nome_cenario ??
+        `Recomendação inicial - estudo ${input.id_estudo}`,
+      status: "DEFINITIVO",
+      quantidade_gateways: result.gateways.length,
+      pontos_interesse: totalInterest,
+      pontos_cobertos: totalCovered,
+      pontos_nao_cobertos: result.pontosNaoCobertos.length,
+      percentual_cobertura:
+        totalInterest > 0
+          ? Math.round((totalCovered / totalInterest) * 100)
+          : 0,
+      executado_em: new Date().toISOString(),
+    });
+
+    const coverageByGateway = new Map<number, Coverage>();
+    const gatewayAttributes = new Map<number, Record<string, unknown>>();
+    const metadata = new GatewayMetadataService();
+    for (const gateway of result.gateways) {
+      gatewayAttributes.set(gateway.candidato.id_estudo_ponto,
+        await metadata.attributes(gateway.candidato, study));
     }
-  }
 
-  private formatGroup(scenarios: ReturnType<RecommendationService["formatResult"]>[]) {
-    return {
-      ...scenarios[0], cenarios: scenarios,
-      alternativas_geradas: scenarios.some((scenario) => scenario.objetivo === "Cobertura ponderada por prioridade"),
-      id_cenario_selecionado: scenarios.find((scenario) => scenario.selecionado)?.id_cenario ?? null,
-      aviso: scenarios.length > 0 && scenarios.length < 6
-        ? `Foram encontradas ${scenarios.length} configurações distintas viáveis para os pontos e limites deste estudo.` : null,
-    };
-  }
 
-  private matchesCandidateCriterion(candidate: EstudoPonto, criterion: RecommendationCriterion | null): boolean {
-    if (!criterion) return true;
-    const allowed = this.criterionTypes(criterion.tipos_elementos_permitidos);
-    const blocked = this.criterionTypes(criterion.tipos_elementos_proibidos);
-    const type = this.normalizeAssetType(candidate.tipo_ativo);
-    if ((allowed.size > 0 && !allowed.has(type)) || blocked.has(type)) return false;
+    for (const gw of result.gateways) {
+      const scenarioGateway = await this.scenarioService.createGatewayScenario({
+        id_cenario: scenario.id_cenario,
+        id_estudo_ponto: gw.candidato.id_estudo_ponto,
+        quantidade_pontos_atendidos: gw.atendimentos.length,
+      });
+
+      for (const at of gw.atendimentos) {
+        await this.scenarioService.createServiceScenario({
+          id_cenario_gateway: scenarioGateway.id_cenario_gateway,
+          id_estudo_ponto: at.ponto.id_estudo_ponto,
+          distancia_m: Math.round(at.distanciaM),
+          nivel_sinal_estimado_dbm: Math.round(at.nivelSinalDbm * 10) / 10,
+        });
+      }
 
         const gatewayCoverage = await this.propagationService.buildCoverage(
           Number(gw.candidato.latitude),
@@ -328,7 +329,7 @@ export class RecommendationService {
           latitude: Number(gw.candidato.latitude),
           longitude: Number(gw.candidato.longitude),
           quantidade_atendidos: gw.atendimentos.length,
-          atributos: gw.candidato.atributos ?? {},
+          atributos: gatewayAttributes.get(gw.candidato.id_estudo_ponto) ?? {},
           mancha_cobertura: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.geometry ?? null,
           alcance_medio_m: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.mean_range_m ?? null,
           modelo_propagacao: coverageByGateway.get(gw.candidato.id_estudo_ponto)?.model ?? null,

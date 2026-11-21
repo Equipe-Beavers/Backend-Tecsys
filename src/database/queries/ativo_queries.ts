@@ -389,14 +389,14 @@ export const findDistributorsQuery = `
 `;
 
 export function findAssetByIdQuery(id: string) {
+    const cte = assetCte.replaceAll(
+        /AND pos.latitude BETWEEN \$2 AND \$4\s+AND pos.longitude BETWEEN \$1 AND \$3/g,
+        "AND a.cod_id = $1",
+    );
+    const separator = id.indexOf(":");
+    const code = separator < 0 ? id : id.slice(separator + 1);
     return {
-        text: `
-            ${assetCte}
-            SELECT *
-            FROM ativos
-            WHERE (id = $1 OR cod_id = $1)
-            LIMIT 1
-        `,
-        values: [id],
+        text: `${cte} SELECT * FROM ativos WHERE id = $2 OR cod_id = $2 LIMIT 1`,
+        values: [code, id],
     };
 }
