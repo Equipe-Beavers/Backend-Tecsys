@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "pdf:exemplo": "tsx scripts/gerar-pdf-exemplo.ts"
+    "pdf:exemplo": "tsx scripts/gerar-pdf-exemplo.ts",
     "email:test": "tsx scripts/test-email.ts"
   },
   "repository": {

@@ -115,24 +115,6 @@ beforeEach(() => {
     pdfControl.fail = false;
 });
 
-describe("StudyExportService.listScenarios (cenários para capturar os mapas)", () => {
-    it("lista os cenários processados do estudo do usuário com o rótulo do PDF", async () => {
-        mockDatabase();
-        const list = await new StudyExportService().listScenarios(5, 1);
-
-        expect(database.query).toHaveBeenCalledWith(findExportStudyQuery, [5, 1]);
-        expect(list.map((item) => [item.id_cenario, item.rotulo, item.otimizado])).toEqual([
-            [10, "Otimizada", true],
-            [11, "Alt. 1", false],
-        ]);
-    });
-
-    it("estudo de outro usuário ou inexistente responde 404", async () => {
-        mockDatabase({ study: null });
-        await expect(new StudyExportService().listScenarios(5, 2)).rejects.toMatchObject({ statusCode: 404 });
-    });
-});
-
 describe("StudyExportService.getReport (cenário escolhido)", () => {
     it("sem id_cenario destaca o cenário mantido no estudo (DEFINITIVO)", async () => {
         mockDatabase({ scenarios: [{ ...scenarios[0]!, status: "RASCUNHO" }, { ...scenarios[1]!, status: "DEFINITIVO" }] });
@@ -290,14 +272,11 @@ describe("rótulos e solução final escolhida", () => {
             })),
         ];
         mockDatabase({ scenarios: group });
-        const list = await new StudyExportService().listScenarios(5, 1);
-
-        expect(list.map((item) => item.rotulo)).toEqual(["Otimizada", "Alt. 1", "Alt. 2", "Alt. 3", "Alt. 4", "Alt. 5"]);
-        expect(list.filter((item) => item.escolhido).map((item) => item.rotulo)).toEqual(["Alt. 1"]);
-
         const report = await new StudyExportService().getReport(5, 1);
-        expect([report.cenario_selecionado, ...report.outros_cenarios].map((item) => item.rotulo))
-            .toEqual(["Alt. 1", "Otimizada", "Alt. 2", "Alt. 3", "Alt. 4", "Alt. 5"]);
+        const all = [report.cenario_selecionado, ...report.outros_cenarios];
+
+        expect(all.map((item) => item.rotulo)).toEqual(["Alt. 1", "Otimizada", "Alt. 2", "Alt. 3", "Alt. 4", "Alt. 5"]);
+        expect(all.filter((item) => item.escolhido).map((item) => item.rotulo)).toEqual(["Alt. 1"]);
     });
 
     it("destaca o cenário pedido e marca como escolhido o DEFINITIVO, que pode ser outro", async () => {

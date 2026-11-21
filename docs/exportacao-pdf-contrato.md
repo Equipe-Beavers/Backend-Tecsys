@@ -34,14 +34,7 @@ const imagem_mapa = map.getCanvas().toDataURL("image/png");   // Mapbox: criar o
 - Cenário sem imagem enviada: o PDF mostra o aviso "a imagem do mapa deste cenário não foi enviada" (nunca usa o mapa de outro cenário).
 - `imagens_mapa` com id de cenário que não pertence ao estudo → 400.
 
-Para saber quais cenários capturar, use `GET /estudos/:id/cenarios` (autenticado, só estudos do usuário; 404 caso contrário). Devolve os mesmos cenários processados que entram no PDF:
-
-```json
-[
-  { "id_cenario": 10, "id_cenario_base": null, "nome": "Otimizada", "rotulo": "Otimizada", "otimizado": true, "escolhido": false, "executado_em": "2026-11-14T11:20:00.000Z" },
-  { "id_cenario": 11, "id_cenario_base": 10, "nome": "Alternativa 1", "rotulo": "Alt. 1", "otimizado": false, "escolhido": true, "executado_em": "2026-11-14T11:40:00.000Z" }
-]
-```
+Os cenários a capturar são as abas que a tela já mostra (`GET /study/:id/recommendations`): o frontend desenha o mapa de cada uma com esses mesmos dados, sem chamadas extras.
 
 ### Otimizada × Alt. N × solução final escolhida
 

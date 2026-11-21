@@ -55,8 +55,6 @@ function ensureSpace(doc: Doc, height: number): void {
 }
 
 function sectionTitle(doc: Doc, title: string): void {
-    // Reserva espaço para o título e o início do conteúdo, sem deixar o título
-    // sozinho no fim da página.
     ensureSpace(doc, 90);
     doc.moveDown(0.8);
     const y = doc.y;
@@ -191,10 +189,8 @@ function mapSection(doc: Doc, scenario: ExportScenario): void {
         return;
     }
     const maxWidth = contentWidth(doc);
-    // Usa o espaço que sobra na página (até 360 pt); só muda de página quando
-    // sobra pouco, para não deixar um vazio grande antes do mapa.
     const minHeight = 200;
-    const reserved = 40 + 24; // texto e legenda abaixo do mapa
+    const reserved = 40 + 24;
     let available = bottomLimit(doc) - doc.y - reserved;
     if (available < minHeight) {
         doc.addPage();
@@ -484,7 +480,6 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
             const chosen = [main, ...others].find((scenario) => scenario.escolhido);
             header(doc, report);
 
-            // Identificador e descrição do estudo não entram no relatório.
             sectionTitle(doc, "1. Identificação do estudo");
             keyValues(doc, [
                 ["Nome do estudo", estudo.nome],
@@ -516,8 +511,6 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
 
             let number = 7;
             if (others.length > 0) {
-                // Sem quebras de página forçadas: cada bloco segue o anterior e
-                // só muda de página quando não cabe.
                 sectionTitle(doc, `${number}. Demais cenários do estudo`);
                 number += 1;
                 others.forEach((scenario, index) => {

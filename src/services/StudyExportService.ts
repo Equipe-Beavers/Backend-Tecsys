@@ -30,17 +30,6 @@ import {
 } from "../utils/StudyExportUtils.js";
 import { buildStudyReportPdf } from "../utils/StudyReportPdf.js";
 
-export interface StudyScenarioSummary {
-    id_cenario: number;
-    id_cenario_base: number | null;
-    nome: string;
-    rotulo: string;
-    otimizado: boolean;
-    /** Solução final escolhida (status DEFINITIVO). */
-    escolhido: boolean;
-    executado_em: Date | null;
-}
-
 export interface StudyExportFile {
     fileName: string;
     content: Buffer;
@@ -150,29 +139,6 @@ export class StudyExportService {
 
         const [cenarioSelecionado, ...outros] = scenarios;
         return { gerado_em: new Date(), estudo, cenario_selecionado: cenarioSelecionado!, outros_cenarios: outros };
-    }
-
-    /**
-     * Cenários processados do estudo, os mesmos que entram no PDF. O frontend
-     * usa a lista para capturar o mapa de cada um (`imagens_mapa`).
-     */
-    async listScenarios(idStudy: number, userId: number): Promise<StudyScenarioSummary[]> {
-        const studyResult = await pool.query(findExportStudyQuery, [idStudy, userId]);
-        if (!studyResult.rows[0]) throw new StudyError(404, "Estudo não encontrado.");
-
-        const { rows } = await pool.query(findExportScenariosQuery, [idStudy]);
-        const { ordered, optimized, labels } = classifyScenarios(rows as Row[]);
-        const kept = [...ordered].reverse().find((row) => row.status === "DEFINITIVO");
-        return ordered.map((row) => ({
-            id_cenario: Number(row.id_cenario),
-            id_cenario_base: row.id_cenario_base === null || row.id_cenario_base === undefined
-                ? null : Number(row.id_cenario_base),
-            nome: toText(row.nome) ?? `Cenário ${String(row.id_cenario)}`,
-            rotulo: labels.get(Number(row.id_cenario)) ?? `Cenário ${String(row.id_cenario)}`,
-            otimizado: row === optimized,
-            escolhido: row === kept,
-            executado_em: toDate(row.executado_em),
-        }));
     }
 
     async exportPdf(idStudy: number, userId: number, options: StudyExportQuery = {}): Promise<StudyExportFile> {
