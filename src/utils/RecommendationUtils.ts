@@ -85,6 +85,7 @@ export class RecommendationUtils {
     interestPoint: EstudoPonto[],
     RFProfile: PerfilRf,
     coverage: Map<number, AtendimentoCalculado[]>,
+    siteBonuses: Map<number, number> = new Map(),
     maxGateways = Infinity,
   ): ResultadoCalculo {
     const capability = RFProfile.capacidade_max_equipamentos ?? Infinity;
@@ -103,7 +104,8 @@ export class RecommendationUtils {
                 (a, b) => (WEIGHT_PRIORIRY[b.ponto.prioridade ?? "normal"] ?? 1) - (WEIGHT_PRIORIRY[a.ponto.prioridade ?? "normal"] ?? 1)
             );
             const covered = capability === Infinity ? ordinated : ordinated.slice(0, capability);
-            const score = covered.reduce((s, a) => s + (WEIGHT_PRIORIRY[a.ponto.prioridade ?? "normal"] ?? 1), 0);
+            const score = covered.reduce((s, a) => s + (WEIGHT_PRIORIRY[a.ponto.prioridade ?? "normal"] ?? 1), 0)
+                + (covered.length ? (siteBonuses.get(c.id_estudo_ponto) ?? 0) : 0);
             if (!best || score > best.score) best = {candidate: c, covered, score};
         }
 
