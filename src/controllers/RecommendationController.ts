@@ -39,4 +39,22 @@ export class RecommendationController {
             })
         }
     }
+
+    async ListRecommendations(request: FastifyRequest<{ Params: RecomendarParams }>, reply: FastifyReply) {
+        try {
+            return reply.send(await this.recommendationService.listRecommendations(request.params.id, Number(request.user.sub)));
+        } catch (error) {
+            request.log.error(error);
+            return reply.status(500).send({ message: "Não foi possível carregar os cenários do estudo." });
+        }
+    }
+
+    async SelectRecommendation(request: FastifyRequest<{ Params: RecomendarParams; Body: { id_cenario: number } }>, reply: FastifyReply) {
+        try {
+            return reply.send(await this.recommendationService.selectRecommendation(request.params.id, request.body.id_cenario, Number(request.user.sub)));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Não foi possível selecionar o cenário.";
+            return reply.status(400).send({ code: "SCENARIO_SELECTION_ERROR", message });
+        }
+    }
 }
