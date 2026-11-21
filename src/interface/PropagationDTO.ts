@@ -10,6 +10,7 @@ export interface PropagationParameters {
     gatewayGainDbi: number;
     deviceGainDbi: number;
     cableLossDb: number;
+    additionalLossDb?: number;
     marginDb: number;
     gatewayHeightM: number;
     deviceHeightM: number;
@@ -35,6 +36,8 @@ export interface LinkCalculation {
     distanceM: number;
     pathLossDb: number;
     buildingsLossDb: number;
+    relevoLossDb?: number;
+    vegetacaoLossDb?: number;
     signalDbm: number;
     covered: boolean;
 }
@@ -53,6 +56,8 @@ export interface Coverage {
     buildings_count: number;
     buildings_radius_m: number | null;
     buildings_error: string | null;
+    relevo_considerado?: boolean;
+    vegetacao_considerada?: boolean;
     rays: number;
 }
 
