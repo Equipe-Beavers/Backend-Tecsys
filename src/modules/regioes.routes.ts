@@ -11,6 +11,13 @@ export async function regioesRoutes(app: FastifyInstance): Promise<void> {
     ),
   );
 
+  app.get("/distribuidoras/:id", (request, reply) =>
+    controller.GetDistributorById(
+      request as Parameters<RegionsController["GetDistributorById"]>[0],
+      reply,
+    ),
+  );
+
   app.get("/estados", (request, reply) =>
     controller.ListStates(
       request as Parameters<RegionsController["ListStates"]>[0],
