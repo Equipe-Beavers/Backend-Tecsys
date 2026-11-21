@@ -158,7 +158,6 @@ function legend(doc: Doc): void {
     const items: Array<[string, string]> = [
         [COLORS.gateway, "Gateway proposto"],
         [COLORS.covered, "Ativo coberto"],
-        [COLORS.uncovered, "Sem cobertura"],
     ];
     ensureSpace(doc, 20);
     let x = MARGIN;
@@ -206,7 +205,7 @@ function mapSection(doc: Doc, scenario: ExportScenario): void {
     doc.image(image, x, y, { width, height });
     doc.rect(x, y, width, height).lineWidth(1).strokeColor(COLORS.border).stroke();
     doc.font("Helvetica").fontSize(8).fillColor(COLORS.muted)
-        .text(`Mapa do cenário ${scenario.rotulo}: gateways propostos e ativos, como exibidos na aplicação.`,
+        .text(`Mapa da ${scenarioLabel(scenario)}: gateways propostos e ativos, como exibidos na aplicação.`,
             MARGIN, y + height + 4, { width: maxWidth, align: "center" });
     doc.y = y + height + 20;
     legend(doc);
@@ -353,9 +352,48 @@ export function scenarioName(scenario: ExportScenario): string {
     return scenario.escolhido ? `${scenarioTitle(scenario)} (solução final escolhida)` : scenarioTitle(scenario);
 }
 
+const BOX_PADDING = 12;
+
+function lastPageIndex(doc: Doc): number {
+    const range = doc.bufferedPageRange();
+    return range.start + range.count - 1;
+}
+
+/**
+ * Desenha o conteúdo de uma alternativa dentro de uma caixa com faixa de título,
+ * para deixar claro onde ela começa e termina. A borda acompanha a quebra de página.
+ */
+function scenarioBox(doc: Doc, title: string, highlight: boolean, draw: () => void): void {
+    const color = highlight ? COLORS.accent : COLORS.primary;
+    const left = MARGIN - BOX_PADDING;
+    const width = contentWidth(doc) + BOX_PADDING * 2;
+    const barHeight = 24;
+
+    ensureSpace(doc, 180);
+    doc.moveDown(0.6);
+    const startPage = lastPageIndex(doc);
+    const startY = doc.y;
+    doc.rect(left, startY, width, barHeight).fill(color);
+    doc.font("Helvetica-Bold").fontSize(11).fillColor("#FFFFFF")
+        .text(title, MARGIN, startY + 7, { width: contentWidth(doc), lineBreak: false, ellipsis: true });
+    doc.y = startY + barHeight + 8;
+
+    draw();
+
+    const endPage = lastPageIndex(doc);
+    const endY = doc.y + 4;
+    for (let page = startPage; page <= endPage; page += 1) {
+        doc.switchToPage(page);
+        const top = page === startPage ? startY : MARGIN - 6;
+        const bottom = page === endPage ? endY : bottomLimit(doc) + 6;
+        doc.rect(left, top, width, bottom - top).lineWidth(1.2).strokeColor(color).stroke();
+    }
+    doc.switchToPage(endPage);
+    doc.y = endY + 14;
+}
+
 function scenarioBlock(doc: Doc, scenario: ExportScenario): void {
     keyValues(doc, [
-        ["Cenário", scenarioName(scenario)],
         ["Perfil RF", scenario.nome_perfil_rf ?? "-"],
         ["Capacidade por gateway", scenario.capacidade_max_equipamentos !== null
             ? `${formatNumber(scenario.capacidade_max_equipamentos)} equipamentos` : "Não informada"],
@@ -372,48 +410,15 @@ function scenarioBlock(doc: Doc, scenario: ExportScenario): void {
     assetTables(doc, scenario);
 }
 
-function paragraph(doc: Doc, text: string): void {
-    doc.font("Helvetica").fontSize(10).fillColor(COLORS.text);
-    ensureSpace(doc, doc.heightOfString(text, { width: contentWidth(doc) }) + 6);
-    doc.text(text, MARGIN, doc.y, { width: contentWidth(doc) });
-    doc.moveDown(0.5);
+/** Todos os cenários na ordem da tela: Otimizada, Alternativa 1, Alternativa 2... */
+function orderedScenarios(report: StudyExportReport): ExportScenario[] {
+    return [report.cenario_selecionado, ...report.outros_cenarios].sort((a, b) =>
+        Number(b.otimizado) - Number(a.otimizado) || a.id_cenario - b.id_cenario);
 }
 
-function finalConsiderations(doc: Doc, report: StudyExportReport): void {
-    const main = report.cenario_selecionado;
-    const { indicadores } = main;
-    const chosen = [main, ...report.outros_cenarios].find((scenario) => scenario.escolhido);
-    paragraph(doc, chosen
-        ? `A solução final escolhida para o estudo "${report.estudo.nome}" é ${scenarioTitle(chosen)}.`
-        : `Nenhuma alternativa foi marcada como solução final do estudo "${report.estudo.nome}" até o momento.`);
-    paragraph(doc, `A alternativa selecionada, ${scenarioTitle(main)}, utiliza `
-        + `${formatNumber(indicadores.quantidade_gateways)} gateway(s) e atende ${formatNumber(indicadores.pontos_cobertos)} de `
-        + `${formatNumber(indicadores.pontos_interesse)} ativos de interesse (${formatPercent(indicadores.percentual_cobertura)} de cobertura).`);
-
-    const pending = main.por_categoria.filter((category) => category.nao_atendidos > 0);
-    if (pending.length > 0) {
-        paragraph(doc, "Ativos sem cobertura por tipo: "
-            + pending.map((category) => `${category.tipo_ativo} (${formatNumber(category.nao_atendidos)})`).join("; ") + ".");
-    } else if (indicadores.pontos_interesse > 0) {
-        paragraph(doc, "Todos os ativos de interesse foram atendidos neste cenário.");
-    }
-    if (indicadores.capacidade_utilizada_media_pct !== null) {
-        paragraph(doc, `A utilização média da capacidade dos gateways é de ${formatPercent(indicadores.capacidade_utilizada_media_pct)}.`);
-    }
-
-    const all = [main, ...report.outros_cenarios];
-    if (all.length > 1) {
-        const bestCoverage = Math.max(...all.map((scenario) => scenario.indicadores.percentual_cobertura));
-        const fewest = Math.min(...all.map((scenario) => scenario.indicadores.quantidade_gateways));
-        const names = (predicate: (scenario: ExportScenario) => boolean) =>
-            all.filter(predicate).map((scenario) => scenarioLabel(scenario)).join(", ");
-        paragraph(doc, `Entre os ${all.length} cenários comparados, a maior cobertura (${formatPercent(bestCoverage)}) é de: `
-            + `${names((scenario) => scenario.indicadores.percentual_cobertura === bestCoverage)}; o menor número de gateways `
-            + `(${formatNumber(fewest)}) é de: ${names((scenario) => scenario.indicadores.quantidade_gateways === fewest)}.`);
-    }
-    doc.font("Helvetica-Oblique").fontSize(8.5).fillColor(COLORS.muted)
-        .text("Os resultados refletem os dados processados na aplicação na data de geração deste relatório.",
-            MARGIN, doc.y, { width: contentWidth(doc) });
+/** A solução final escolhida; sem escolha, a alternativa aberta na aplicação ao exportar. */
+function featuredScenario(report: StudyExportReport): ExportScenario {
+    return orderedScenarios(report).find((scenario) => scenario.escolhido) ?? report.cenario_selecionado;
 }
 
 function header(doc: Doc, report: StudyExportReport): void {
@@ -476,11 +481,13 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
         doc.on("error", reject);
 
         try {
-            const { estudo, cenario_selecionado: main, outros_cenarios: others } = report;
-            const chosen = [main, ...others].find((scenario) => scenario.escolhido);
+            const { estudo } = report;
+            const all = orderedScenarios(report);
+            const featured = featuredScenario(report);
+            const chosen = featured.escolhido ? featured : null;
             header(doc, report);
 
-            sectionTitle(doc, "1. Identificação do estudo");
+            sectionTitle(doc, "Identificação do estudo");
             keyValues(doc, [
                 ["Nome do estudo", estudo.nome],
                 ["Região analisada", estudo.regiao],
@@ -491,38 +498,18 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
                 ["Data de geração", formatDate(report.gerado_em)],
             ]);
 
-            sectionTitle(doc, "2. Informações gerais");
-            keyValues(doc, [...rfParameters(main.perfil_rf), ...criterionParameters(main.criterio)]);
+            sectionTitle(doc, "Informações gerais");
+            keyValues(doc, [...rfParameters(featured.perfil_rf), ...criterionParameters(featured.criterio)]);
 
-            sectionTitle(doc, "3. Resumo da alternativa selecionada");
-            keyValues(doc, [["Alternativa selecionada", scenarioName(main)]]);
-            scenarioIndicators(doc, main);
+            // As alternativas, na mesma ordem da tela, cada uma dentro da sua caixa. A Otimizada
+            // não é detalhada, a menos que seja ela a solução final escolhida.
+            doc.moveDown(0.6);
+            all.filter((scenario) => !scenario.otimizado || scenario.escolhido).forEach((scenario) => {
+                scenarioBox(doc, scenarioName(scenario), scenario.escolhido, () => scenarioBlock(doc, scenario));
+            });
 
-            sectionTitle(doc, `4. Mapa geográfico - ${scenarioLabel(main)}`);
-            mapSection(doc, main);
-
-            sectionTitle(doc, `5. Gateways propostos (${formatNumber(main.gateways.length)})`);
-            gatewaysTable(doc, main);
-
-            sectionTitle(doc, "6. Ativos elétricos");
-            subTitle(doc, "Cobertura por tipo de ativo");
-            categoriesTable(doc, main);
-            assetTables(doc, main);
-
-            let number = 7;
-            if (others.length > 0) {
-                sectionTitle(doc, `${number}. Demais cenários do estudo`);
-                number += 1;
-                others.forEach((scenario, index) => {
-                    if (index > 0) doc.moveDown(0.8);
-                    subTitle(doc, scenarioName(scenario));
-                    scenarioBlock(doc, scenario);
-                });
-
-                const all = [main, ...others].sort((a, b) =>
-                    Number(b.otimizado) - Number(a.otimizado) || a.id_cenario - b.id_cenario);
-                sectionTitle(doc, `${number}. Comparativo entre cenários`);
-                number += 1;
+            if (all.length > 1) {
+                sectionTitle(doc, "Comparativo de cenários");
                 table(doc, [
                     { header: "Cenário", width: 4.8 },
                     { header: "Gateways", width: 1.5, align: "right" },
@@ -539,9 +526,6 @@ export function buildStudyReportPdf(input: StudyExportReport): Promise<Buffer> {
                     formatPercent(scenario.indicadores.capacidade_utilizada_media_pct),
                 ]));
             }
-
-            sectionTitle(doc, `${number}. Considerações finais`);
-            finalConsiderations(doc, report);
 
             pageDecorations(doc, report);
             doc.end();
