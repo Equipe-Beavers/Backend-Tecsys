@@ -113,3 +113,7 @@ As edificações vêm da [Overture Maps](https://docs.overturemaps.org/guides/bu
 | `POST /generate-coverage` | Mancha de cobertura de um gateway com as edificações. |
 
 Variáveis opcionais: `OVERTURE_RELEASE`, `BUILDINGS_QUERY_TIMEOUT_MS`, `BUILDINGS_CACHE_TTL_MIN`, `BUILDINGS_CACHE_MAX`, `BUILDING_DEFAULT_FLOORS`, `BUILDINGS_MAX_RADIUS_M` (veja `.env.example`).
+
+## Otimização da camada de edifícios (19/11/2026)
+
+O cache espacial usa tiles de 0,01° e armazena cada edifício nos tiles que seu contorno intercepta, deduplicando o resultado. O aplicativo mantém até oito consultas por cinco minutos e compartilha requisições em andamento. Consultas inteiramente cobertas por uma resposta completa são recortadas em memória; respostas truncadas não são usadas para preencher outras áreas. A primeira leitura de uma região ainda depende da Overture Maps. Não há importação nem migração de banco nesta alteração. Consulte `docs/correcoes-outros-sprint3.md` no repositório principal para as medições e o escopo.
