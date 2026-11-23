@@ -112,8 +112,23 @@ export class PropagationUtils {
         return urban;
     }
 
-    PathLossDb(distanceM: number, params: PropagationParameters, explicitBuildings: boolean): number {
-        const environment = explicitBuildings ? "rural" : params.environment;
+
+    PathLossDb(
+        distanceM: number,
+        params: PropagationParameters,
+        explicitBuildings: boolean,
+    ): number {
+        if (distanceM < 20) {
+            return this.FreeSpaceLossDb(
+                Math.max(distanceM, 1),
+                params.frequencyMhz,
+            );
+        }
+
+        const environment = explicitBuildings
+            ? "rural"
+            : params.environment;
+
         const hata = this.HataLossDb(
             distanceM,
             params.frequencyMhz,
@@ -121,8 +136,13 @@ export class PropagationUtils {
             params.deviceHeightM,
             environment,
         );
-        return Math.max(hata, this.FreeSpaceLossDb(distanceM, params.frequencyMhz));
+
+        return Math.max(
+            hata,
+            this.FreeSpaceLossDb(distanceM, params.frequencyMhz),
+        );
     }
+
 
     MaxRangeM(params: PropagationParameters, explicitBuildings: boolean): number {
         const budget = this.MaxPathLossDb(params);

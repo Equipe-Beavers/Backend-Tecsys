@@ -169,14 +169,16 @@ export class RecommendationService {
       const links = await this.propagationService.calculateLinks(
         gateway, propagationPoints, params, buildings, environmental,
       );
-      coverage.set(candidate.id_estudo_ponto, [...links.entries()]
-        .filter(([, link]) => link.covered)
-        .filter(([, link]) =>
-          (criterion?.distancia_minima_ativos_m == null || link.distanceM >= Number(criterion.distancia_minima_ativos_m)) &&
-          (criterion?.distancia_maxima_ativos_m == null || link.distanceM <= Number(criterion.distancia_maxima_ativos_m)))
-        .map(([id, link]) => ({
-          ponto: pointsById.get(id)!, distanciaM: link.distanceM, nivelSinalDbm: link.signalDbm,
-        })));
+      coverage.set(
+        candidate.id_estudo_ponto,
+        [...links.entries()]
+          .filter(([, link]) => link.covered)
+          .map(([id, link]) => ({
+            ponto: pointsById.get(id)!,
+            distanciaM: link.distanceM,
+            nivelSinalDbm: link.signalDbm,
+          }))
+      );
     }
     environmental.summary.fontes.edificacoes = buildingsAvailable
       ? (buildingsMissing ? "parcial" : "disponivel") : "indisponivel";
