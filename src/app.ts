@@ -10,6 +10,8 @@ import { ScenarioController } from "./controllers/ScenarioController.js";
 import { InstallCriterionController } from "./controllers/InstallCriterionController.js";
 import { RFController } from "./controllers/RFController.js";
 import { RecommendationController } from "./controllers/RecommendationController.js";
+import { StudyExportController } from "./controllers/StudyExportController.js";
+import { STUDY_EXPORT_BODY_LIMIT, studyExportBodySchema } from "./modules/study-export.schema.js";
 import { ativoRoutes } from "./modules/ativo.routes.js";
 import { regioesRoutes } from "./modules/regioes.routes.js";
 import { antenasRoutes } from "./modules/antenas.routes.js";
@@ -81,6 +83,7 @@ export class App {
     const recommendationController = new RecommendationController();
     const buildingController = new BuildingController();
     const propagationController = new PropagationController();
+    const studyExportController = new StudyExportController();
     const importController = new ImportController();
 
     // ROTAS DE ESTUDO E RECOMENDAÇÃO
@@ -248,6 +251,15 @@ export class App {
         );
       },
     );
+
+    this.app.post("/estudos/:id/exportar-pdf", {
+      bodyLimit: STUDY_EXPORT_BODY_LIMIT,
+      schema: { params: studyParams, body: studyExportBodySchema },
+    }, async (request, reply) => {
+      return studyExportController.ExportStudyPdf(
+        request as Parameters<StudyExportController["ExportStudyPdf"]>[0], reply,
+      );
+    });
 
     // Compatibilidade com o fluxo da SCRUM-54 enquanto os clientes migram
     // para as rotas REST em /estudos.

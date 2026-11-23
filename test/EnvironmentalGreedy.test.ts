@@ -24,5 +24,11 @@ describe("US72: greedy ambiental", () => {
     );
     expect(result.gateways[0]?.candidato.id_estudo_ponto).toBe(2);
     expect(result.pontosNaoCobertos).toHaveLength(0);
+    const alternatives = new RecommendationUtils().CalculateAlternatives(
+      candidates, [interest], { capacidade_max_equipamentos: null } as PerfilRf,
+      coverage, 1, 6, new Map([[2, 0.15]]),
+    );
+    expect(alternatives[0]?.gateways[0]?.candidato.id_estudo_ponto).toBe(2);
+    expect(alternatives.every(alternative => alternative.gateways.length <= 1)).toBe(true);
   });
 });
