@@ -1,31 +1,40 @@
 import type { MultipartFile } from "@fastify/multipart";
-import { request, FormData } from "undici";
+import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
+import { request } from "undici";
 
 export class ImportService {
+    constructor(private readonly pythonService = "http://localhost:8000/process-file") {}
+
     async importFile(file: MultipartFile, bdgd_version: string) {
         const allowedFiles = [".zip", ".gdb"];
 
-        const isFileValid = allowedFiles.some(end => file.filename.toLocaleLowerCase().endsWith(end));
+        const isFileValid = allowedFiles.some(end => file.filename.toLowerCase().endsWith(end));
         if (!isFileValid) {
             throw new Error("Formato de arquivo inválido. Apenas arquivos '.zip' e '.gdb' são permitidos.");
         }
 
-        const chunks: Buffer[] = [];
-        for await (const chunk of file.file) {
-            chunks.push(chunk);
-        }
-        const fileBuffer = Buffer.concat(chunks);
-        const blob = new Blob([fileBuffer]);
+        const boundary = `----tecsys-${randomUUID()}`;
+        const safeFilename = file.filename.replace(/["\\\r\n]/g, "_");
+        const body = async function* () {
+            yield Buffer.from(
+                `--${boundary}\r\n` +
+                'Content-Disposition: form-data; name="bdgd_version"\r\n\r\n' +
+                `${bdgd_version}\r\n` +
+                `--${boundary}\r\n` +
+                `Content-Disposition: form-data; name="file"; filename="${safeFilename}"\r\n` +
+                "Content-Type: application/octet-stream\r\n\r\n",
+            );
+            for await (const chunk of file.file) {
+                yield chunk;
+            }
+            yield Buffer.from(`\r\n--${boundary}--\r\n`);
+        };
 
-        const formData = new FormData();
-        formData.set("file", blob, file.filename);
-        formData.set("bdgd_version", bdgd_version);
-
-        const pythonService = "http://localhost:8000/process-file";
-        const response = await request(pythonService, {
+        const response = await request(this.pythonService, {
             method: "POST",
-            body: formData,
+            headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+            body: Readable.from(body()),
         });
 
         if (response.statusCode !== 200) {
