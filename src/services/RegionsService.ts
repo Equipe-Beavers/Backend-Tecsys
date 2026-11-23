@@ -136,70 +136,61 @@ export class RegionsService {
       );
     }
 
-    const where = conditions.join(" AND ");
-    const countResult = await pool.query<{ total: number }>(
-      `
-      ${ATIVOS_CTE}
-      SELECT COUNT(*)::int AS total
-      FROM (
-        SELECT m.codigo_ibge
-        FROM ativos p
-        JOIN municipios m
-          ON m.codigo_ibge::text = p.municipio
-        LEFT JOIN distribuidoras d
-          ON d.id = p.id_distribuidora
-        WHERE ${where}
-        GROUP BY m.codigo_ibge
-      ) AS agrupados
-      `,
-      values,
-    );
-
-    const total = Number(countResult.rows[0]?.total ?? 0);
+    // One aggregation per filter, reused by all pages. Avoid scanning the same
+    // positions separately for COUNT and for each page of the city selector.
+    const key = JSON.stringify([conditions, values]);
+    const now = Date.now();
+    let entry = this.municipiosCache.get(key);
+    if (entry && entry.expiresAt <= now) {
+      this.municipiosCache.delete(key);
+      entry = undefined;
+    }
+    let dados = entry?.data;
+    if (!dados) {
+      let pending = this.municipiosPending.get(key);
+      if (!pending) {
+        const where = conditions.join(" AND ");
+        pending = pool.query<{
+          nome: string; uf: string; total_ativos: number;
+          lat: number | null; lng: number | null;
+        }>(`
+          ${ATIVOS_CTE}
+          SELECT m.nome, m.uf,
+            COUNT(p.id_posicao)::int AS total_ativos,
+            AVG(p.latitude) AS lat, AVG(p.longitude) AS lng
+          FROM ativos p
+          JOIN municipios m ON m.codigo_ibge::text = p.municipio
+          LEFT JOIN distribuidoras d ON d.id = p.id_distribuidora
+          WHERE ${where}
+          GROUP BY m.codigo_ibge, m.nome, m.uf
+          ORDER BY m.nome, m.uf, m.codigo_ibge
+        `, values).then((result) => {
+          const data = result.rows.map((row) => this.mapMunRows(row));
+          // Bound memory, and refresh after a minute so ETL changes become visible.
+          if (this.municipiosCache.size >= 64) {
+            this.municipiosCache.delete(this.municipiosCache.keys().next().value!);
+          }
+          this.municipiosCache.set(key, { data, expiresAt: Date.now() + 60_000 });
+          return data;
+        }).finally(() => { this.municipiosPending.delete(key); });
+        this.municipiosPending.set(key, pending);
+      }
+      dados = await pending;
+    }
     const inicio = (params.pagina - 1) * params.limite;
-    const dataValues = [...values, params.limite, inicio];
-    const limiteParam = dataValues.length - 1;
-    const offsetParam = dataValues.length;
-
-    const result = await pool.query<{
-      nome: string;
-      uf: string;
-      total_ativos: number;
-      lat: number | null;
-      lng: number | null;
-    }>(
-      `
-      ${ATIVOS_CTE}
-      SELECT
-        m.nome,
-        m.uf,
-        COUNT(p.id_posicao)::int AS total_ativos,
-        AVG(p.latitude) AS lat,
-        AVG(p.longitude) AS lng
-      FROM ativos p
-      JOIN municipios m
-        ON m.codigo_ibge::text = p.municipio
-      LEFT JOIN distribuidoras d
-        ON d.id = p.id_distribuidora
-      WHERE ${where}
-      GROUP BY m.codigo_ibge, m.nome, m.uf
-      ORDER BY m.nome
-      LIMIT $${limiteParam}
-      OFFSET $${offsetParam}
-      `,
-      dataValues,
-    );
-
     return {
-      dados: result.rows.map(this.mapMunRows),
+      dados: dados.slice(inicio, inicio + params.limite).map((item) => ({ ...item })),
       paginacao: {
-        pagina: params.pagina,
-        limite: params.limite,
-        total,
-        totalPaginas: Math.ceil(total / params.limite),
+        pagina: params.pagina, limite: params.limite, total: dados.length,
+        totalPaginas: Math.ceil(dados.length / params.limite),
       },
     };
   }
+
+  private readonly municipiosCache = new Map<string, {
+    data: MunicipioDTO[]; expiresAt: number;
+  }>();
+  private readonly municipiosPending = new Map<string, Promise<MunicipioDTO[]>>();
 
   private distributorLocalsCache: { data: Map<string, DistribuidoraLocal>; expiresAt: number } | null = null;
   private static readonly distributorLocalsTtlMs = 5 * 60 * 1000;
