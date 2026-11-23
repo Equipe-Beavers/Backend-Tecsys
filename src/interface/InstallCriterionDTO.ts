@@ -4,14 +4,10 @@ export class CreateInstallCriterionDTO {
   declare nome: string;
   declare tipos_elementos_permitidos?: unknown;
   declare tipos_elementos_proibidos?: unknown;
-  declare requer_alimentacao_eletrica?: boolean | null;
   declare distancia_minima_ativos_m?: number | null;
   declare distancia_maxima_ativos_m?: number | null;
   declare limite_gateways?: number | null;
   declare relevo?: unknown;
-  declare vegetacoes?: unknown;
-  declare edificacoes?: unknown;
-  declare antenas?: unknown;
 }
 
 export class InstallCriterionDTO extends CreateInstallCriterionDTO {

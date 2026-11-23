@@ -1,4 +1,5 @@
 import { pool } from "../database/pool.js";
+import type { PoolClient } from "pg";
 import type {
   CenarioAtendimento,
   CriarCenarioAtendimento,
@@ -13,8 +14,8 @@ import { ValidationService } from "./ValidationService.js";
 export class ScenarioService {
   private validationService: ValidationService;
 
-  constructor() {
-    this.validationService = new ValidationService();
+  constructor(private database: Pick<PoolClient, "query"> = pool) {
+    this.validationService = new ValidationService(database);
   }
 
   async createScenario(scenarioData: CriarCenario): Promise<Cenario> {
@@ -63,22 +64,21 @@ export class ScenarioService {
       scenarioData.pontos_nao_cobertos ?? null,
       scenarioData.percentual_cobertura ?? null,
       scenarioData.capacidade_utilizada_media_pct ?? null,
-      scenarioData.custo_total_estimado ?? null,
       scenarioData.mancha_consolidada ? JSON.stringify(scenarioData.mancha_consolidada) : null,
       scenarioData.executado_em ?? null,
     ];
 
     const query = `
-      INSERT INTO cenarios 
-      (id_estudo, id_perfil_rf, id_criterio_instalacao, id_cenario_base, nome, descricao, objetivo, status, quantidade_gateways, pontos_interesse, pontos_cobertos, pontos_nao_cobertos, percentual_cobertura, capacidade_utilizada_media_pct, custo_total_estimado, mancha_consolidada, executado_em)
+      INSERT INTO cenarios
+      (id_estudo, id_perfil_rf, id_criterio_instalacao, id_cenario_base, nome, descricao, objetivo, status, quantidade_gateways, pontos_interesse, pontos_cobertos, pontos_nao_cobertos, percentual_cobertura, capacidade_utilizada_media_pct, mancha_consolidada, executado_em)
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        CASE WHEN $16::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($16) END,
-        $17
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+        CASE WHEN $15::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($15) END,
+        $16
       ) RETURNING *;
     `;
 
-    const result = await pool.query(query, cenario);
+    const result = await this.database.query(query, cenario);
 
     if (!result.rows[0]) throw new Error("Erro ao criar cenário.");
     return result.rows[0] as Cenario;
@@ -108,12 +108,12 @@ export class ScenarioService {
     ];
 
     const query = `
-      INSERT INTO cenario_atendimentos 
+      INSERT INTO cenario_atendimentos
       (id_cenario_gateway, id_estudo_ponto, distancia_m, nivel_sinal_estimado_dbm)
       VALUES ($1, $2, $3, $4) RETURNING *;
     `;
 
-    const result = await pool.query(query, atendimento);
+    const result = await this.database.query(query, atendimento);
 
     if (!result.rows[0]) throw new Error("Erro ao criar atendimento do cenário.");
     return result.rows[0] as CenarioAtendimento;
@@ -141,21 +141,20 @@ export class ScenarioService {
       scenarioData.ordem ?? null,
       scenarioData.quantidade_pontos_atendidos ?? null,
       scenarioData.capacidade_utilizada_pct ?? null,
-      scenarioData.custo_estimado ?? null,
       scenarioData.parametros_calculo ?? null,
       scenarioData.mancha_cobertura ? JSON.stringify(scenarioData.mancha_cobertura) : null,
     ];
 
     const query = `
-      INSERT INTO cenario_gateways 
-      (id_cenario, id_estudo_ponto, ordem, quantidade_pontos_atendidos, capacidade_utilizada_pct, custo_estimado, parametros_calculo, mancha_cobertura)
+      INSERT INTO cenario_gateways
+      (id_cenario, id_estudo_ponto, ordem, quantidade_pontos_atendidos, capacidade_utilizada_pct, parametros_calculo, mancha_cobertura)
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7,
-        CASE WHEN $8::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($8) END
+        $1, $2, $3, $4, $5, $6,
+        CASE WHEN $7::text IS NULL THEN NULL ELSE ST_GeomFromGeoJSON($7) END
       ) RETURNING *;
     `;
 
-    const result = await pool.query(query, gateway);
+    const result = await this.database.query(query, gateway);
 
     if (!result.rows[0]) throw new Error("Erro ao criar gateway do cenário.");
     return result.rows[0] as CenarioGateway;

@@ -40,4 +40,81 @@ describe("RecommendationUtils.CalculateRecommendation", () => {
         expect(result.gateways.map((g) => g.candidato.id_estudo_ponto)).toEqual([1, 2]);
         expect(result.pontosNaoCobertos).toHaveLength(0);
     });
+
+    it("gera seis conjuntos distintos sem alterar os enlaces ou resultados anteriores", () => {
+        const options = Array.from({ length: 7 }, (_, index) => point(index + 1));
+        const links = new Map(options.map((candidate) => [candidate.id_estudo_ponto, serve([1, 2, 3, 4])]));
+        const results = utils.CalculateAlternatives(options, meters, profile, links);
+        expect(results).toHaveLength(6);
+        expect(new Set(results.map((result) => result.gateways.map((gateway) => gateway.candidato.id_estudo_ponto).join(","))).size).toBe(6);
+        expect(results[0]!.gateways[0]!.candidato.id_estudo_ponto).toBe(1);
+        expect(results.every((result) => result.pontosNaoCobertos.length === 0)).toBe(true);
+        results[1]!.gateways.pop();
+        expect(results[0]!.gateways).toHaveLength(1);
+        expect(links.get(1)).toHaveLength(4);
+    });
+
+    it("respeita capacidade e limite de gateways e nao fabrica alternativas duplicadas", () => {
+        const limited = { capacidade_max_equipamentos: 1 } as PerfilRf;
+        const results = utils.CalculateAlternatives(candidates, meters, limited, coverage, 1);
+        expect(results).toHaveLength(2);
+        expect(results.every((result) => result.gateways.length === 1)).toBe(true);
+        expect(results.every((result) => result.gateways[0]!.atendimentos.length === 1)).toBe(true);
+        expect(results.every((result) => result.pontosNaoCobertos.length === 3)).toBe(true);
+    });
+
+    it("finds full-coverage pairs when another gateway must be selected first", () => {
+        const interests = [point(101, { papel: "interesse" }), point(102, { papel: "interesse" })];
+        const serveInterests = (ids: number[]): AtendimentoCalculado[] =>
+            ids.map((id) => ({ ponto: interests[id - 1]!, distanciaM: 100, nivelSinalDbm: -100 }));
+        const options = Array.from({ length: 6 }, (_, index) => point(index + 1));
+        const links = new Map<number, AtendimentoCalculado[]>([
+            [1, serveInterests([1, 2])],
+            ...options.slice(1).map((candidate) => [candidate.id_estudo_ponto, serveInterests([1])] as const),
+        ]);
+
+        const results = utils.CalculateAlternatives(
+            options,
+            interests,
+            { capacidade_max_equipamentos: 1 } as PerfilRf,
+            links,
+            Infinity,
+            6,
+        );
+
+        const fullCoveragePairs = results
+            .filter((result) => result.pontosNaoCobertos.length === 0)
+            .map((result) => result.gateways.map((gateway) => gateway.candidato.id_estudo_ponto).sort().join(","));
+        expect(fullCoveragePairs).toHaveLength(5);
+        expect(fullCoveragePairs).toContain("1,2");
+        expect(fullCoveragePairs).toContain("1,3");
+        expect(fullCoveragePairs).toContain("1,4");
+        expect(fullCoveragePairs).toContain("1,5");
+        expect(fullCoveragePairs).toContain("1,6");
+    });
+
+    it("ranks the best alternative ahead of a weaker greedy initial result", () => {
+        const interests = Array.from({ length: 6 }, (_, index) =>
+            point(101 + index, { papel: "interesse" }),
+        );
+        const serveInterests = (ids: number[]): AtendimentoCalculado[] =>
+            ids.map((id) => ({ ponto: interests[id - 1]!, distanciaM: 100, nivelSinalDbm: -100 }));
+        const options = [point(1), point(2), point(3)];
+        const links = new Map<number, AtendimentoCalculado[]>([
+            [1, serveInterests([1, 2, 3, 4])],
+            [2, serveInterests([1, 2, 5])],
+            [3, serveInterests([3, 4, 6])],
+        ]);
+
+        const results = utils.CalculateAlternatives(
+            options,
+            interests,
+            { capacidade_max_equipamentos: null } as PerfilRf,
+            links,
+            2,
+        );
+
+        expect(results[0]!.pontosNaoCobertos).toHaveLength(0);
+        expect(results[0]!.gateways.map((gateway) => gateway.candidato.id_estudo_ponto).sort()).toEqual([2, 3]);
+    });
 });

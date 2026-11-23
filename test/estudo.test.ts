@@ -107,7 +107,7 @@ describe("study editing and deletion", () => {
         const response = await app.inject("/estudos/12");
         expect(response.statusCode).toBe(200);
         expect(response.json().estudo.id_estudo).toBe(12);
-        expect(database.query).toHaveBeenCalledWith(getStudyQuery, [12]);
+        expect(database.query).toHaveBeenCalledWith(getStudyQuery, [12, 1]);
         await app.close();
     });
 
@@ -120,7 +120,7 @@ describe("study editing and deletion", () => {
         expect(response.statusCode).toBe(200);
         expect(database.query).toHaveBeenCalledWith(updateStudyQuery, [12, JSON.stringify({
             nome: "Revisado", descricao: null, id_perfil_rf: 9, id_criterio_instalacao: 10,
-        })]);
+        }), 1]);
         await app.close();
     });
 
@@ -159,7 +159,7 @@ describe("study editing and deletion", () => {
         const response = await app.inject({ method: "DELETE", url: "/estudos/12" });
         expect(response.statusCode).toBe(204);
         expect(response.body).toBe("");
-        expect(database.query).toHaveBeenCalledWith(deleteStudyQuery, [12]);
+        expect(database.query).toHaveBeenCalledWith(deleteStudyQuery, [12, 1]);
         await app.close();
     });
 

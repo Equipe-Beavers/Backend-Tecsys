@@ -16,7 +16,6 @@ export interface Cenario {
     pontos_nao_cobertos: number | null;
     percentual_cobertura: number | null;
     capacidade_utilizada_media_pct: number | null;
-    custo_total_estimado: number | null;
     mancha_consolidada: unknown | null;
     executado_em: string | null;
     criado_em: string;
@@ -38,7 +37,6 @@ export interface CriarCenario {
     pontos_nao_cobertos?: number | null;
     percentual_cobertura?: number | null;
     capacidade_utilizada_media_pct?: number | null;
-    custo_total_estimado?: number | null;
     mancha_consolidada?: unknown | null;
     executado_em?: string | null;
 }

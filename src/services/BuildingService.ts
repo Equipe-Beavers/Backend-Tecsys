@@ -23,8 +23,7 @@ const DEFAULT_LIMIT = 1000;
 const DEFAULT_MAX_LOSS_DB = 40;
 const MAX_BBOX_SIDE_DEGREES = 0.1;
 const MAX_LINKS_SIDE_DEGREES = 0.3;
-const TILE_SIZE_DEGREES = 0.02;
-const TILE_MARGIN_DEGREES = 0.002;
+const TILE_SIZE_DEGREES = 0.01;
 
 interface CacheEntry {
     buildings: CachedBuilding[];
@@ -107,10 +106,9 @@ export class BuildingService {
         for (const row of rows) {
             const building = this.buildingUtils.Normalize(row, release, env.buildings.defaultFloors);
             if (!building) continue;
-            const centerLon = (building.bbox.minLongitude + building.bbox.maxLongitude) / 2;
-            const centerLat = (building.bbox.minLatitude + building.bbox.maxLatitude) / 2;
-            const key = `${Math.floor(centerLon / TILE_SIZE_DEGREES)}:${Math.floor(centerLat / TILE_SIZE_DEGREES)}`;
-            byTile.get(key)?.push(building);
+            for (const key of this.buildingUtils.TileKeys(building.bbox, TILE_SIZE_DEGREES)) {
+                byTile.get(key)?.push(building);
+            }
         }
 
         const loadedAt = Date.now();
@@ -118,13 +116,7 @@ export class BuildingService {
     }
 
     async getBuildingsInArea(area: BoundingBoxDTO): Promise<{ buildings: CachedBuilding[]; release: string }> {
-        const expanded: BoundingBoxDTO = {
-            minLatitude: area.minLatitude - TILE_MARGIN_DEGREES,
-            maxLatitude: area.maxLatitude + TILE_MARGIN_DEGREES,
-            minLongitude: area.minLongitude - TILE_MARGIN_DEGREES,
-            maxLongitude: area.maxLongitude + TILE_MARGIN_DEGREES,
-        };
-        const keys = this.buildingUtils.TileKeys(expanded, TILE_SIZE_DEGREES);
+        const keys = this.buildingUtils.TileKeys(area, TILE_SIZE_DEGREES);
 
         const missing = keys.filter((key) => !this.getCached(key));
         const toLoad = missing.filter((key) => !BuildingService.inFlight.has(key));
@@ -139,17 +131,17 @@ export class BuildingService {
         }
         await Promise.all(waiting);
 
-        const buildings: CachedBuilding[] = [];
+        const byId = new Map<string, CachedBuilding>();
         let release = "";
         for (const key of keys) {
             const entry = BuildingService.cache.get(key);
             if (!entry) continue;
             release ||= entry.release;
             for (const building of entry.buildings) {
-                if (this.buildingUtils.Intersects(building.bbox, area)) buildings.push(building);
+                if (this.buildingUtils.Intersects(building.bbox, area)) byId.set(building.id, building);
             }
         }
-        return { buildings, release };
+        return { buildings: [...byId.values()], release };
     }
 
     toBuilding(building: CachedBuilding, frequencyMhz: number): Building {

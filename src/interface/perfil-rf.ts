@@ -14,12 +14,7 @@ export interface PerfilRf {
     quantidade_canais: number | null;
     limite_mensagens_transmissoes: number | null;
     periodo_limite_mensagens: string | null;
-    custo_estimado_gateway: number | null;
     caracteristicas_antena: Record<string, unknown> | null;
-    considera_relevo: boolean;
-    considera_vegetacao: boolean;
-    considera_edificacoes: boolean;
-    considera_obstaculos: boolean;
     parametros_adicionais: Record<string, unknown> | null;
     criado_em: string;
     atualizado_em: string | null;
@@ -39,12 +34,7 @@ export interface CriarPerfilRf {
     quantidade_canais?: number | null;
     limite_mensagens_transmissoes?: number | null;
     periodo_limite_mensagens?: string | null;
-    custo_estimado_gateway?: number | null;
     caracteristicas_antena?: Record<string, unknown> | null;
-    considera_relevo?: boolean;
-    considera_vegetacao?: boolean;
-    considera_edificacoes?: boolean;
-    considera_obstaculos?: boolean;
     parametros_adicionais?: Record<string, unknown> | null;
 }
 
@@ -64,10 +54,6 @@ export interface CreateRFProfileInput {
     altura_dispositivo_m?: number | null;
     capacidade_max_equipamentos?: number | null;
     atenuacao_adicional_db?: number | null;
-    considera_relevo?: boolean;
-    considera_vegetacao?: boolean;
-    considera_edificacoes?: boolean;
-    considera_antenas?: boolean;
 }
 
 export interface RFRangeCalculationInput {
@@ -90,10 +76,6 @@ export interface RFProfileListItem {
     altura_dispositivo_m: number | null;
     capacidade_max_equipamentos: number | null;
     atenuacao_adicional_db: number | null;
-    considera_relevo: boolean;
-    considera_vegetacao: boolean;
-    considera_edificacoes: boolean;
-    considera_antenas: boolean;
     criado_em: string;
     atualizado_em: string | null;
 }

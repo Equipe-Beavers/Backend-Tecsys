@@ -16,13 +16,15 @@ export class OvertureService {
     private static connection: Promise<DuckDBConnection> | null = null;
     private static queue: Promise<unknown> = Promise.resolve();
     private static latest: { release: string; at: number } | null = null;
+    private static releaseInFlight: Promise<string> | null = null;
     private static fileBoxes = new Map<string, Promise<number[][]>>();
     private static fileHrefs = new Map<string, Promise<string>>();
 
     private static async connect(): Promise<DuckDBConnection> {
         const instance = await DuckDBInstance.create(":memory:");
         const duckdb = await instance.connect();
-        await duckdb.run("INSTALL httpfs; LOAD httpfs;");
+        try { await duckdb.run("LOAD httpfs;"); }
+        catch { await duckdb.run("INSTALL httpfs; LOAD httpfs;"); }
         await duckdb.run("SET s3_region='us-west-2';");
         await duckdb.run("SET enable_http_metadata_cache=true;");
         await duckdb.run("SET enable_object_cache=true;");
@@ -55,7 +57,9 @@ export class OvertureService {
             } catch (error) {
                 lastError = error;
             }
-            await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+            if (attempt < STAC_RETRIES) {
+                await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+            }
         }
         const reason = lastError instanceof Error ? lastError.message : String(lastError);
         throw new BuildingSourceError(`Catálogo da Overture Maps indisponível (${reason}).`);
@@ -67,10 +71,14 @@ export class OvertureService {
         const cached = OvertureService.latest;
         if (cached && Date.now() - cached.at < LATEST_RELEASE_TTL_MS) return cached.release;
 
-        const catalog = await this.fetchJson<{ latest?: string }>(`${env.buildings.stacUrl}/catalog.json`);
-        if (!catalog.latest) throw new BuildingSourceError("O catálogo da Overture Maps não informou a release mais recente.");
-        OvertureService.latest = { release: catalog.latest, at: Date.now() };
-        return catalog.latest;
+        if (OvertureService.releaseInFlight) return OvertureService.releaseInFlight;
+        const loading = this.fetchJson<{ latest?: string }>(`${env.buildings.stacUrl}/catalog.json`).then((catalog) => {
+            if (!catalog.latest) throw new BuildingSourceError("O catálogo da Overture Maps não informou a release mais recente.");
+            OvertureService.latest = { release: catalog.latest, at: Date.now() };
+            return catalog.latest;
+        }).finally(() => { OvertureService.releaseInFlight = null; });
+        OvertureService.releaseInFlight = loading;
+        return loading;
     }
 
     private getFileBoxes(release: string): Promise<number[][]> {

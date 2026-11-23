@@ -6,7 +6,7 @@ export async function antenasRoutes(app: FastifyInstance): Promise<void> {
     const controller = new AntenasController();
 
     app.get<{ Querystring: AntenasQuery }>(
-        "/api/antenas",
+        "/antenas",
         (request, reply) => controller.ListAntenas(request, reply),
     );
 }

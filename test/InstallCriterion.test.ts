@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app.js";
+import { createTestApp } from "./helpers/create-test-app.js";
 
 import {
   createInstallCriterionQuery, listInstallCriteriaQuery, getInstallCriterionQuery,
@@ -23,8 +24,8 @@ class DatabaseResult {
 const criterion = {
   id_criterio_instalacao: 7, id_usuario: 1, nome: "Postes",
   tipos_elementos_permitidos: ["POSTE"], tipos_elementos_proibidos: null,
-  requer_alimentacao_eletrica: false, distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
-  relevo: null, vegetacoes: null, edificacoes: null, antenas: null,
+  distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
+  relevo: null,
   criado_em: "2026-10-06T12:00:00.000Z", atualizado_em: null,
 };
 
@@ -33,7 +34,7 @@ describe("InstallCriterionController CRUD", () => {
 
   beforeEach(() => {
     database.query.mockReset();
-    app = new App().getInstance();
+    app = createTestApp();
     app.log.level = "silent";
   });
   afterEach(async () => { await app.close(); });
@@ -53,11 +54,8 @@ describe("InstallCriterionController CRUD", () => {
     new DatabaseResult(criterion);
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload: {
       id_usuario: 1, nome: "  Postes  ", tipos_elementos_permitidos: ["POSTE"],
-      requer_alimentacao_eletrica: false, distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
+      distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
       relevo: { altitude_minima_m: 10, declividade_maxima_graus: 20 },
-      vegetacoes: { permitidas: ["PASTAGEM"], proibidas: ["MANGUE"] },
-      edificacoes: { quantidade_maxima: 3 },
-      antenas: { considerar_conflito_frequencia: false },
     } });
     expect(response.statusCode).toBe(201);
     expect(response.json().data).toEqual(criterion);
@@ -65,11 +63,8 @@ describe("InstallCriterionController CRUD", () => {
     expect(database.query.mock.calls[0]?.[0]).toBe(createInstallCriterionQuery);
     expect(JSON.parse(database.query.mock.calls[0]?.[1][0])).toEqual({
       id_usuario: 1, nome: "Postes", tipos_elementos_permitidos: ["POSTE"],
-      requer_alimentacao_eletrica: false, distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
+      distancia_minima_ativos_m: null, distancia_maxima_ativos_m: 100, limite_gateways: 3,
       relevo: { altitude_minima_m: 10, declividade_maxima_graus: 20 },
-      vegetacoes: { permitidas: ["PASTAGEM"], proibidas: ["MANGUE"] },
-      edificacoes: { quantidade_maxima: 3 },
-      antenas: { considerar_conflito_frequencia: false },
     });
   });
 
@@ -81,7 +76,6 @@ describe("InstallCriterionController CRUD", () => {
     { id_usuario: 1, nome: "Postes", limite_gateways: 1.5 },
     { id_usuario: 1, nome: "Postes", limite_gateways: 0 },
     { id_usuario: 1, nome: "Postes", limite_gateways: 2147483648 },
-    { id_usuario: 1, nome: "Postes", requer_alimentacao_eletrica: "unknown" },
     { id_usuario: 1, nome: "Postes", descricao: "old field" },
     { id_usuario: 1, nome: "Postes", altura_minima_m: 10 },
     { id_usuario: 1, nome: "Postes", caracteristicas_minimas_local: {} },
@@ -96,11 +90,10 @@ describe("InstallCriterionController CRUD", () => {
     expect(database.query).not.toHaveBeenCalled();
   });
 
-  it("rejects a nonexistent user through the foreign key", async () => {
-    new DatabaseResult(null, { code: "23503" });
+  it("rejects a user different from the authenticated identity", async () => {
     const response = await app.inject({ method: "POST", url: "/create-install-criterion", payload: { id_usuario: 99, nome: "Postes" } });
-    expect(response.statusCode).toBe(400);
-    expect(database.query).toHaveBeenCalledTimes(1);
+    expect(response.statusCode).toBe(403);
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it("lists with user filter and deterministic pagination", async () => {
@@ -124,9 +117,8 @@ describe("InstallCriterionController CRUD", () => {
       frequencia_mhz: "915.000", potencia_transmissao_dbm: "21.000",
       sensibilidade_recepcao_dbm: "-120.000", altura_gateway_m: "6.00",
       altura_dispositivo_m: "5.00", capacidade_max_equipamentos: 40,
-      atenuacao_adicional_db: null, considera_relevo: true,
-      considera_vegetacao: true, considera_edificacoes: false,
-      considera_antenas: true, criado_em: new Date("2026-10-07T10:00:00Z"),
+      atenuacao_adicional_db: null,
+      criado_em: new Date("2026-10-07T10:00:00Z"),
       atualizado_em: null,
     });
     const response = await app.inject("/list-rf-profiles?id_usuario=1&page=2&limit=10");
@@ -156,9 +148,8 @@ describe("InstallCriterionController CRUD", () => {
       frequencia_mhz: 915, potencia_transmissao_dbm: 8,
       sensibilidade_recepcao_dbm: -120, altura_gateway_m: 6,
       altura_dispositivo_m: 5, capacidade_max_equipamentos: 1200,
-      atenuacao_adicional_db: 4.2, considera_relevo: true,
-      considera_vegetacao: false, considera_edificacoes: true,
-      considera_antenas: true, criado_em: "2026-10-12T10:00:00.000Z",
+      atenuacao_adicional_db: 4.2,
+      criado_em: "2026-10-12T10:00:00.000Z",
       atualizado_em: null,
     };
     new DatabaseResult({
@@ -185,10 +176,6 @@ describe("InstallCriterionController CRUD", () => {
         altura_dispositivo_m: 5,
         capacidade_max_equipamentos: 1200,
         atenuacao_adicional_db: 4.2,
-        considera_relevo: true,
-        considera_vegetacao: false,
-        considera_edificacoes: true,
-        considera_antenas: true,
       },
     });
     expect(response.statusCode).toBe(201);
@@ -203,10 +190,6 @@ describe("InstallCriterionController CRUD", () => {
       altura_dispositivo_m: 5,
       capacidade_max_equipamentos: 1200,
       atenuacao_adicional_db: 4.2,
-      considera_relevo: true,
-      considera_vegetacao: false,
-      considera_edificacoes: true,
-      considera_antenas: true,
     })]);
   });
 
@@ -275,9 +258,8 @@ describe("InstallCriterionController CRUD", () => {
       frequencia_mhz: "915.000", potencia_transmissao_dbm: "8.000",
       sensibilidade_recepcao_dbm: "-120.000", altura_gateway_m: "1.20",
       altura_dispositivo_m: "1.20", capacidade_max_equipamentos: 1200,
-      atenuacao_adicional_db: "4.200", considera_relevo: true,
-      considera_vegetacao: false, considera_edificacoes: true,
-      considera_antenas: true, criado_em: new Date("2026-10-12T10:00:00Z"),
+      atenuacao_adicional_db: "4.200",
+      criado_em: new Date("2026-10-12T10:00:00Z"),
       atualizado_em: null,
     });
     const response = await app.inject("/get-rf-profile/12");
@@ -290,10 +272,9 @@ describe("InstallCriterionController CRUD", () => {
       sensibilidade_recepcao_dbm: -120,
       altura_gateway_m: 1.2,
       atenuacao_adicional_db: 4.2,
-      considera_vegetacao: false,
       criado_em: "2026-10-12T10:00:00.000Z",
     });
-    expect(database.query).toHaveBeenCalledWith(getRFProfileQuery, [12]);
+    expect(database.query).toHaveBeenCalledWith(getRFProfileQuery, [12, 1]);
   });
 
   it("returns 404 when an RF profile does not exist", async () => {
@@ -308,21 +289,20 @@ describe("InstallCriterionController CRUD", () => {
       frequencia_mhz: 915, potencia_transmissao_dbm: 8,
       sensibilidade_recepcao_dbm: -120, altura_gateway_m: 1.2,
       altura_dispositivo_m: 1.2, capacidade_max_equipamentos: 1200,
-      atenuacao_adicional_db: 4.2, considera_relevo: true,
-      considera_vegetacao: true, considera_edificacoes: true,
-      considera_antenas: true, criado_em: "2026-10-12T10:00:00.000Z",
+      atenuacao_adicional_db: 4.2,
+      criado_em: "2026-10-12T10:00:00.000Z",
       atualizado_em: "2026-10-12T11:00:00.000Z",
     });
     const response = await app.inject({
       method: "PATCH",
       url: "/update-rf-profile/12",
-      payload: { nome: " GW revisado ", considera_vegetacao: true },
+      payload: { nome: " GW revisado " },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().data.nome).toBe("GW revisado");
     expect(database.query).toHaveBeenCalledWith(
       updateRFProfileQuery,
-      [12, JSON.stringify({ nome: "GW revisado", considera_vegetacao: true })],
+      [12, JSON.stringify({ nome: "GW revisado" }), 1],
     );
   });
 
@@ -350,7 +330,7 @@ describe("InstallCriterionController CRUD", () => {
     });
     expect(response.statusCode).toBe(204);
     expect(response.body).toBe("");
-    expect(database.query).toHaveBeenCalledWith(deleteRFProfileQuery, [8]);
+    expect(database.query).toHaveBeenCalledWith(deleteRFProfileQuery, [8, 1]);
   });
 
   it("returns 404 when deleting a missing RF profile", async () => {
@@ -383,7 +363,7 @@ describe("InstallCriterionController CRUD", () => {
     const response = await app.inject("/get-install-criterion/7");
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ data: criterion });
-    expect(database.query).toHaveBeenCalledWith(getInstallCriterionQuery, [7]);
+    expect(database.query).toHaveBeenCalledWith(getInstallCriterionQuery, [7, 1]);
   });
 
   it("normalizes PostgreSQL BIGINT, NUMERIC and timestamp values for the frontend", async () => {
@@ -407,15 +387,14 @@ describe("InstallCriterionController CRUD", () => {
     new DatabaseResult({ ...criterion, nome: "Torres", limite_gateways: null, relevo: { altitude_minima_m: 80 } });
     const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload: { nome: " Torres ", limite_gateways: null, relevo: { altitude_minima_m: 80 } } });
     expect(response.statusCode).toBe(200);
-    expect(database.query).toHaveBeenCalledWith(updateInstallCriterionQuery, [7, JSON.stringify({ nome: "Torres", limite_gateways: null, relevo: { altitude_minima_m: 80 } })]);
+    expect(database.query).toHaveBeenCalledWith(updateInstallCriterionQuery, [7, JSON.stringify({ nome: "Torres", limite_gateways: null, relevo: { altitude_minima_m: 80 } }), 1]);
     expect(database.query).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a replacement user through the foreign key", async () => {
-    new DatabaseResult(null, { code: "23503" });
+  it("rejects ownership changes before accessing the database", async () => {
     const response = await app.inject({ method: "PATCH", url: "/update-install-criterion/7", payload: { id_usuario: 99 } });
     expect(response.statusCode).toBe(400);
-    expect(database.query).toHaveBeenCalledTimes(1);
+    expect(database.query).not.toHaveBeenCalled();
   });
 
   it.each([{}, { nome: null }, { nome: " " }, { id_usuario: null }, { id_criterio_instalacao: 10 }, { atualizado_em: "2020-01-01" }])("rejects invalid patch: %j", async (payload) => {
@@ -436,7 +415,7 @@ describe("InstallCriterionController CRUD", () => {
     const response = await app.inject({ method: "DELETE", url: "/delete-install-criterion/7" });
     expect(response.statusCode).toBe(204);
     expect(response.body).toBe("");
-    expect(database.query).toHaveBeenCalledWith(deleteInstallCriterionQuery, [7]);
+    expect(database.query).toHaveBeenCalledWith(deleteInstallCriterionQuery, [7, 1]);
   });
 
   it("returns conflict when a study references the criterion", async () => {

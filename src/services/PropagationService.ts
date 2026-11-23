@@ -1,5 +1,5 @@
 import { pool } from "../database/pool.js";
-import { supabase } from "../database/supabase.js";
+import type { PoolClient } from "pg";
 import {
     findScenarioCoverageQuery,
     findScenarioGatewaysCoverageQuery,
@@ -20,6 +20,7 @@ import type {
 } from "../interface/PropagationDTO.js";
 import { PropagationUtils } from "../utils/PropagationUtils.js";
 import { BuildingService, type BuildingsAround } from "./BuildingService.js";
+import type { EnvironmentalContext } from "./EnvironmentalService.js";
 
 const DEFAULT_RAYS = 360;
 const MIN_STEP_M = 10;
@@ -80,6 +81,7 @@ export class PropagationService {
         points: PropagationPoint[],
         params: PropagationParameters,
         buildingsAround: BuildingsAround | null,
+        environmental?: EnvironmentalContext,
     ): Promise<Map<string, LinkCalculation>> {
         const buildings = buildingsAround?.index ?? null;
         const explicitBuildings = buildings !== null;
@@ -115,12 +117,17 @@ export class PropagationService {
                 obstaclesByLink.get(point.id) ?? [],
                 buildingsAround,
             );
-            const signalDbm = this.propagationUtils.SignalLevelDbm(params, pathLossDb + buildingsLossDb);
+            const environmentalLoss = environmental?.loss(gateway, point, distanceM, params);
+            const totalLossDb = pathLossDb + buildingsLossDb +
+                (environmentalLoss?.relevo_db ?? 0) + (environmentalLoss?.vegetacao_db ?? 0);
+            const signalDbm = this.propagationUtils.SignalLevelDbm(params, totalLossDb);
 
             result.set(point.id, {
                 distanceM,
                 pathLossDb: this.propagationUtils.Round1(pathLossDb),
                 buildingsLossDb: this.propagationUtils.Round1(buildingsLossDb),
+                relevoLossDb: environmentalLoss?.relevo_db,
+                vegetacaoLossDb: environmentalLoss?.vegetacao_db,
                 signalDbm: this.propagationUtils.Round1(signalDbm),
                 covered: this.propagationUtils.IsCovered(params, signalDbm),
             });
@@ -136,6 +143,7 @@ export class PropagationService {
         params: PropagationParameters,
         rays = DEFAULT_RAYS,
         buildingsInput?: BuildingsAround | null,
+        environmental?: EnvironmentalContext,
     ): Promise<Coverage> {
         const buildings = buildingsInput === undefined
             ? await this.loadBuildings(params, latitude, longitude)
@@ -165,7 +173,10 @@ export class PropagationService {
 
             for (let distanceM = stepM; distanceM <= maxRangeM + 1e-6; distanceM += stepM) {
                 const { pathLossDb, buildingsLossDb } = this.linkLossDb(distanceM, params, obstacles, buildings);
-                const signalDbm = this.propagationUtils.SignalLevelDbm(params, pathLossDb + buildingsLossDb);
+                const destination = this.propagationUtils.Destination(latitude, longitude, bearing, distanceM);
+                const extra = environmental?.loss({ latitude, longitude }, destination, distanceM, params);
+                const totalLoss = pathLossDb + buildingsLossDb + (extra?.relevo_db ?? 0) + (extra?.vegetacao_db ?? 0);
+                const signalDbm = this.propagationUtils.SignalLevelDbm(params, totalLoss);
                 if (!this.propagationUtils.IsCovered(params, signalDbm)) break;
                 reachM = distanceM;
             }
@@ -185,54 +196,58 @@ export class PropagationService {
             min_range_m: Math.round(Math.min(...values)),
             mean_range_m: Math.round(values.reduce((sum, value) => sum + value, 0) / values.length),
             max_range_m: Math.round(Math.max(...values)),
-            model: this.modelName(explicitBuildings, params),
+            model: this.modelName(explicitBuildings, params) + (environmental ? " + SRTM/OSM (heuristico)" : ""),
             environment: explicitBuildings ? "rural" : params.environment,
             buildings_considered: explicitBuildings,
             buildings_count: index?.size ?? 0,
             buildings_radius_m: explicitBuildings ? Math.round(buildings!.radiusM) : null,
             buildings_error: buildings?.error ?? null,
+            relevo_considerado: environmental?.terrain != null,
+            vegetacao_considerada: environmental?.vegetation != null,
             rays,
         };
     }
 
-    async generateCoverage(input: GenerateCoverageDTO): Promise<Coverage> {
-        const { data: profile, error } = await supabase
-            .from("perfis_rf")
-            .select("*")
-            .eq("id_perfil_rf", input.id_perfil_rf)
-            .maybeSingle();
-        if (error) throw new Error(`Erro ao consultar perfil de RF: ${error.message}.`);
+    async generateCoverage(input: GenerateCoverageDTO, userId: number): Promise<Coverage> {
+        const { rows } = await pool.query(
+            "SELECT * FROM perfis_rf WHERE id_perfil_rf = $1 AND id_usuario = $2",
+            [input.id_perfil_rf, userId],
+        );
+        const profile = rows[0];
         if (!profile) throw new Error("Perfil de RF não encontrado.");
 
         const params = this.buildParameters(profile as PerfilRf, input.gateway_height_m);
         return this.buildCoverage(input.latitude, input.longitude, params, input.rays ?? DEFAULT_RAYS);
     }
 
-    async saveGatewayCoverage(idScenarioGateway: number, coverage: Coverage, params: PropagationParameters) {
-        await pool.query(updateGatewayCoverageQuery, [
+    async saveGatewayCoverage(idScenarioGateway: number, coverage: Coverage, params: PropagationParameters, database: Pick<PoolClient, "query"> = pool, snapshot: Record<string, unknown> = {}) {
+        await database.query(updateGatewayCoverageQuery, [
             idScenarioGateway,
             JSON.stringify(coverage.geometry),
             JSON.stringify({
                 modelo: coverage.model,
                 ambiente: coverage.environment,
                 edificacoes_consideradas: coverage.buildings_considered,
+                relevo_considerado: coverage.relevo_considerado ?? false,
+                vegetacao_considerada: coverage.vegetacao_considerada ?? false,
                 alcance_medio_m: coverage.mean_range_m,
                 altura_gateway_m: params.gatewayHeightM,
                 altura_dispositivo_m: params.deviceHeightM,
                 margem_db: params.marginDb,
                 raios: coverage.rays,
+                ...snapshot,
             }),
         ]);
     }
-    async saveScenarioCoverage(idScenario: number): Promise<Record<string, unknown> | null> {
-        const result = await pool.query(updateScenarioCoverageQuery, [idScenario]);
+    async saveScenarioCoverage(idScenario: number, database: Pick<PoolClient, "query"> = pool): Promise<Record<string, unknown> | null> {
+        const result = await database.query(updateScenarioCoverageQuery, [idScenario]);
         return result.rows[0]?.mancha_consolidada ?? null;
     }
-    async getScenarioCoverage(idScenario: number): Promise<ScenarioCoverage> {
-        const scenario = await pool.query(findScenarioCoverageQuery, [idScenario]);
+    async getScenarioCoverage(idScenario: number, userId: number): Promise<ScenarioCoverage> {
+        const scenario = await pool.query(findScenarioCoverageQuery, [idScenario, userId]);
         if (scenario.rows.length === 0) throw new Error("Cenário não encontrado.");
 
-        const gateways = await pool.query(findScenarioGatewaysCoverageQuery, [idScenario]);
+        const gateways = await pool.query(findScenarioGatewaysCoverageQuery, [idScenario, userId]);
 
         return {
             id_cenario: idScenario,

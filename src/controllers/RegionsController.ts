@@ -44,6 +44,25 @@ export class RegionsController {
         }
     }
 
+    async GetDistributorById(request: FastifyRequest<{ Params: { id: number } }>, reply: FastifyReply,) {
+        try {
+            const data = await this.regionsService.getDistributorById(request.params.id);
+            return reply.status(200).send(data);
+        } catch (error) {
+            if (
+                error instanceof Error &&
+                error.message === `Distribuidora ${request.id} não encontrada.`
+            ) {
+                return reply.status(404).send({ erro: error.message });
+            }
+
+            request.log.error(error, "Erro ao buscar distribuidora pelo ID.");
+            return reply.status(500).send({
+                message: "Um erro inesperado ocorreu ao buscar a distribuidora.",
+            });
+        }
+    }
+
     async ListStates(
         request: FastifyRequest<{ Querystring: { busca?: string } }>,
         reply: FastifyReply,

@@ -1,158 +1,56 @@
 import type { FastifyInstance } from "fastify";
-import {
-    assetTypes,
-    findAssetById,
-    findDistributors,
-    findAssets,
-    findDeviceTypes,
-    type AssetType,
-} from "./repository/ActiveRepository.js";
-
-interface ListQuery {
-    minLatitude?: string;
-    maxLatitude?: string;
-    minLongitude?: string;
-    maxLongitude?: string;
-    tipos?: string;
-    distribuidoras?: string;
-    municipio?: string;
-    limit?: string;
-    tiposDispositivos?: string;
-}
-
-interface DetailParams {
-    id: string;
-}
-
-function parseCoordinate(value: string | undefined, name: string): number {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) {
-        throw new Error(`Parâmetro '${name}' deve ser numérico.`);
-    }
-    return parsed;
-}
-
-function parseTypes(value: string | undefined): AssetType[] | undefined {
-    if (!value) return undefined;
-    const types = value.split(",").map((type) => type.trim().toUpperCase());
-    if (types.length === 0 || types.some((type) => !assetTypes.includes(type as AssetType))) {
-        throw new Error(`Tipos inválidos. Valores permitidos: ${assetTypes.join(", ")}.`);
-    }
-
-    return types as AssetType[];
-}
-
-function parseLimit(value: string | undefined): number {
-    if (value === undefined) return 500;
-    const limit = Number(value);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 5000) {
-        throw new Error("Parâmetro 'limit' deve ser um inteiro entre 1 e 5000.");
-    }
-
-    return limit;
-}
-
-function parseDeviceTypeIds(value: string | undefined): number[] | undefined {
-    if (!value) return undefined;
-    const ids = value.split(",").map((item) => Number(item.trim()));
-    if (
-        ids.length === 0 ||
-        ids.some((id) => !Number.isInteger(id) || id < 0 || id > 43)
-    ) {
-        throw new Error("Tipos de dispositivos inválidos. Use códigos inteiros entre 0 e 43.");
-    }
-    return ids;
-}
-
-function parseDistributors(value: string | undefined): string[] | undefined {
-    if (!value) return undefined;
-    const values = value.split(",").map((item) => item.trim());
-    if (values.length === 0 || values.some((item) => item.length === 0)) {
-        throw new Error("Distribuidoras inválidas.");
-    }
-    return values;
-}
+import { AreaAssetService, type AreaAssetInput } from "../services/AreaAssetService.js";
+import { ActiveController } from "../controllers/ActiveController.js";
 
 export async function ativoRoutes(app: FastifyInstance): Promise<void> {
-    app.get("/api/ativos/distribuidoras", async (request, reply) => {
-        try {
-            return reply.send({ data: await findDistributors() });
-        } catch (error) {
-            request.log.error(error);
-            return reply.code(500).send({ error: "Não foi possível consultar as distribuidoras." });
-        }
-    });
+  const controller = new ActiveController();
 
-    app.get("/api/ativos/tipos-dispositivos", async (request, reply) => {
-        try {
-            return reply.send({ data: await findDeviceTypes() });
-        } catch (error) {
-            request.log.error(error);
-            return reply.code(500).send({ error: "Não foi possível consultar os tipos de dispositivos." });
-        }
-    });
+  app.post<{ Body: AreaAssetInput }>("/ativos/contagem-area", {
+    schema: { body: {
+      type: 'object', additionalProperties: false, required: ['geom'],
+      properties: {
+        distribuidora: { type: 'string', minLength: 1, maxLength: 150 },
+        geom: { type: 'object', additionalProperties: false, required: ['type', 'coordinates'], properties: {
+          type: { type: 'string', const: 'Polygon' },
+          coordinates: { type: 'array', minItems: 1, maxItems: 1, items: {
+            type: 'array', minItems: 4, maxItems: 1000, items: {
+              type: 'array', minItems: 2, maxItems: 2, items: [
+                { type: 'number', minimum: -180, maximum: 180 },
+                { type: 'number', minimum: -90, maximum: 90 },
+              ],
+            },
+          } },
+        } },
+      },
+    } },
+  }, async (request, reply) => {
+    try { return { total: await new AreaAssetService().count(request.body) }; }
+    catch (error) {
+      if (error instanceof RangeError) return reply.status(400).send({ message: error.message });
+      request.log.error({ err: error }, 'Falha ao contar ativos da área');
+      return reply.status(503).send({ message: 'Não foi possível contar os ativos da área.' });
+    }
+  });
 
-    app.get<{ Querystring: ListQuery }>("/api/ativos", async (request, reply) => {
-        try {
-            const minLatitude = parseCoordinate(request.query.minLatitude, "minLatitude");
-            const maxLatitude = parseCoordinate(request.query.maxLatitude, "maxLatitude");
-            const minLongitude = parseCoordinate(request.query.minLongitude, "minLongitude");
-            const maxLongitude = parseCoordinate(request.query.maxLongitude, "maxLongitude");
+  app.get("/ativos/distribuidoras", (request, reply) =>
+    controller.FindDistributors(request, reply),
+  );
 
-            if (
-                minLatitude > maxLatitude ||
-                minLongitude > maxLongitude ||
-                minLatitude < -90 ||
-                maxLatitude > 90 ||
-                minLongitude < -180 ||
-                maxLongitude > 180
-            ) {
-                return reply.code(400).send({ error: "Bounding box inválido." });
-            }
+  app.get("/ativos/tipos-dispositivos", (request, reply) =>
+    controller.FindDeviceTypes(request, reply),
+  );
 
-            const { items, total } = await findAssets({
-                minLatitude,
-                maxLatitude,
-                minLongitude,
-                maxLongitude,
-                types: parseTypes(request.query.tipos),
-                deviceTypeIds: parseDeviceTypeIds(request.query.tiposDispositivos),
-                distributors: parseDistributors(request.query.distribuidoras),
-                municipio: request.query.municipio,
-                limit: parseLimit(request.query.limit),
-            });
-            return reply.send({ data: items, total });
-        } catch (error) {
-            if (error instanceof Error && error.message.startsWith("Parâmetro")) {
-                return reply.code(400).send({ error: error.message });
-            }
-            if (error instanceof Error && error.message.startsWith("Tipos")) {
-                return reply.code(400).send({ error: error.message });
-            }
-            if (error instanceof Error && error.message.startsWith("Distribuidoras")) {
-                return reply.code(400).send({ error: error.message });
-            }
-            if (error instanceof Error && error.message.startsWith("Tipos de dispositivos")) {
-                return reply.code(400).send({ error: error.message });
-            }
-            if (error instanceof Error && error.message.startsWith("Parâmetro 'limit'")) {
-                return reply.code(400).send({ error: error.message });
-            }
-            request.log.error(error);
-            return reply.code(500).send({ error: "Não foi possível consultar os ativos." });
-        }
-    });
+  app.get("/ativos", (request, reply) =>
+    controller.FindAssets(
+      request as Parameters<ActiveController["FindAssets"]>[0],
+      reply,
+    ),
+  );
 
-    app.get<{ Params: DetailParams }>("/api/ativos/:id", async (request, reply) => {
-        try {
-            const ativo = await findAssetById(request.params.id);
-            if (!ativo) {
-                return reply.code(404).send({ error: "Ativo não encontrado." });
-            }
-            return reply.send(ativo);
-        } catch (error) {
-            request.log.error(error);
-            return reply.code(500).send({ error: "Não foi possível consultar o ativo." });
-        }
-    });
+  app.get("/ativos/:id", (request, reply) =>
+    controller.FindAssetById(
+      request as Parameters<ActiveController["FindAssetById"]>[0],
+      reply,
+    ),
+  );
 }
