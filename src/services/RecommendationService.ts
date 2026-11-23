@@ -70,7 +70,6 @@ export class RecommendationService {
 
   private propagationService: PropagationService;
 
-  private scenarioService: ScenarioService;
 
   private environmentalService: EnvironmentalService;
 
@@ -82,7 +81,6 @@ export class RecommendationService {
 
     this.propagationService = new PropagationService();
 
-    this.scenarioService = new ScenarioService();
 
     this.environmentalService = new EnvironmentalService();
 
@@ -173,6 +171,9 @@ export class RecommendationService {
       );
       coverage.set(candidate.id_estudo_ponto, [...links.entries()]
         .filter(([, link]) => link.covered)
+        .filter(([, link]) =>
+          (criterion?.distancia_minima_ativos_m == null || link.distanceM >= Number(criterion.distancia_minima_ativos_m)) &&
+          (criterion?.distancia_maxima_ativos_m == null || link.distanceM <= Number(criterion.distancia_maxima_ativos_m)))
         .map(([id, link]) => ({
           ponto: pointsById.get(id)!, distanciaM: link.distanceM, nivelSinalDbm: link.signalDbm,
         })));
@@ -187,69 +188,169 @@ export class RecommendationService {
       throw new Error("O limite de gateways ou o custo máximo não permite instalar gateways.");
     }
 
-    const result = this.recommendationUtils.CalculateRecommendation(
-      eligibleCandidates, interestPoints, profile, coverage, siteBonuses, maxGateways,
+    const results = this.recommendationUtils.CalculateAlternatives(
+      eligibleCandidates, interestPoints, profile, coverage, maxGateways, 6, siteBonuses,
     );
-    const totalInterest = interestPoints.length;
-    const totalCovered = totalInterest - result.pontosNaoCobertos.length;
-    const totalCost = result.gateways.length * gatewayCost;
-    const scenarioInput = {
-      id_estudo: input.id_estudo,
-      id_perfil_rf: input.id_perfil_rf,
-      id_criterio_instalacao: criterionId,
-      nome: input.nome_cenario ?? `Recomendação inicial - estudo ${input.id_estudo}`,
-      status: "DEFINITIVO",
-      quantidade_gateways: result.gateways.length,
-      pontos_interesse: totalInterest,
-      pontos_cobertos: totalCovered,
-      pontos_nao_cobertos: result.pontosNaoCobertos.length,
-      percentual_cobertura: totalInterest ? Math.round(totalCovered / totalInterest * 100) : 0,
-      custo_total_estimado: totalCost,
-      executado_em: new Date().toISOString(),
-    };
-    const scenario = await this.scenarioService.createScenario(scenarioInput);
-
+    if (!results[0]?.gateways.length) throw new Error("Não existe implantação viável para os pontos e limites informados.");
     const coverageByGateway = new Map<number, Coverage>();
     const gatewayAttributes = new Map<number, Record<string, unknown>>();
     const metadata = new GatewayMetadataService();
-    for (const gw of result.gateways) {
-      const id = Number(gw.candidato.id_estudo_ponto);
-      gatewayAttributes.set(id, await metadata.attributes(gw.candidato, study));
-      const scenarioGateway = await this.scenarioService.createGatewayScenario({
-        id_cenario: scenario.id_cenario,
-        id_estudo_ponto: id,
-        quantidade_pontos_atendidos: gw.atendimentos.length,
-      });
-      for (const at of gw.atendimentos) {
-        await this.scenarioService.createServiceScenario({
-          id_cenario_gateway: scenarioGateway.id_cenario_gateway,
-          id_estudo_ponto: at.ponto.id_estudo_ponto,
-          distancia_m: Math.round(at.distanciaM),
-          nivel_sinal_estimado_dbm: Math.round(at.nivelSinalDbm * 10) / 10,
-        });
+    for (const result of results) {
+      for (const gateway of result.gateways) {
+        const id = Number(gateway.candidato.id_estudo_ponto);
+        if (!gatewayAttributes.has(id)) {
+          gatewayAttributes.set(id, await metadata.attributes(gateway.candidato, study));
+        }
+        gateway.candidato = { ...gateway.candidato, atributos: gatewayAttributes.get(id)! };
+        if (coverageByGateway.has(id)) continue;
+        coverageByGateway.set(id, await this.propagationService.buildCoverage(
+          Number(gateway.candidato.latitude), Number(gateway.candidato.longitude), params, 120,
+          buildingsByCandidate.get(id) ?? null, environmental,
+        ));
       }
-      const gatewayCoverage = await this.propagationService.buildCoverage(
-        Number(gw.candidato.latitude), Number(gw.candidato.longitude), params, 120,
-        buildingsByCandidate.get(id) ?? null, environmental,
-      );
-      await this.propagationService.saveGatewayCoverage(
-        scenarioGateway.id_cenario_gateway, gatewayCoverage, params,
-      );
-      coverageByGateway.set(id, gatewayCoverage);
     }
 
-    const formatted = this.formatResult(scenario as Cenario, result, interestPoints, coverageByGateway, totalCost);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const lockedStudy = await client.query("SELECT id_estudo FROM estudos WHERE id_estudo = $1 AND id_usuario = $2 FOR UPDATE", [input.id_estudo, input.id_usuario]);
+      if (!lockedStudy.rows[0]) throw new Error("Estudo não encontrado.");
+      const scenarioService = new ScenarioService(client);
+      const scenarios: (ReturnType<RecommendationService["formatResult"]> & { analise_ambiental?: unknown })[] = [];
+      let baseId: number | null = null;
+      for (const [index, result] of results.entries()) {
+        const totalCovered = interestPoints.length - result.pontosNaoCobertos.length;
+        const capacity = profile.capacidade_max_equipamentos != null ? Number(profile.capacidade_max_equipamentos) : null;
+        const scenario = await scenarioService.createScenario({
+          id_estudo: input.id_estudo, id_perfil_rf: input.id_perfil_rf,
+          id_criterio_instalacao: criterionId, id_cenario_base: baseId,
+          nome: index === 0 ? (input.nome_cenario ?? "Otimizada") : `Alternativa ${index}`,
+          objetivo: index === 0 ? "Cobertura ponderada por prioridade" : "Implantação distinta ordenada por prioridade e cobertura",
+          status: "RASCUNHO", quantidade_gateways: result.gateways.length,
+          pontos_interesse: interestPoints.length, pontos_cobertos: totalCovered,
+          pontos_nao_cobertos: result.pontosNaoCobertos.length,
+          percentual_cobertura: Math.round(totalCovered / interestPoints.length * 100),
+          capacidade_utilizada_media_pct: capacity && result.gateways.length ? Math.round(totalCovered / (result.gateways.length * capacity) * 10000) / 100 : null,
+          executado_em: new Date().toISOString(),
+        });
+        if (baseId === null) baseId = Number(scenario.id_cenario);
+        for (const [order, gateway] of result.gateways.entries()) {
+          const savedGateway = await scenarioService.createGatewayScenario({
+            id_cenario: scenario.id_cenario, id_estudo_ponto: gateway.candidato.id_estudo_ponto,
+            ordem: order + 1, quantidade_pontos_atendidos: gateway.atendimentos.length,
+            capacidade_utilizada_pct: capacity ? gateway.atendimentos.length / capacity * 100 : null,
+          });
+          for (const attendance of gateway.atendimentos) {
+            await scenarioService.createServiceScenario({
+              id_cenario_gateway: savedGateway.id_cenario_gateway, id_estudo_ponto: attendance.ponto.id_estudo_ponto,
+              distancia_m: Math.round(attendance.distanciaM), nivel_sinal_estimado_dbm: Math.round(attendance.nivelSinalDbm * 10) / 10,
+            });
+          }
+          await this.propagationService.saveGatewayCoverage(savedGateway.id_cenario_gateway, coverageByGateway.get(gateway.candidato.id_estudo_ponto)!, params, client, {
+            candidato_snapshot: { ...gateway.candidato, atributos: gatewayAttributes.get(gateway.candidato.id_estudo_ponto) ?? gateway.candidato.atributos },
+            custo_total_estimado: result.gateways.length * gatewayCost,
+            analise_ambiental: environmental.summary,
+            quantidade_edificacoes: coverageByGateway.get(gateway.candidato.id_estudo_ponto)?.buildings_count ?? 0,
+            ...(order === 0 ? { pontos_interesse_snapshot: interestPoints } : {}),
+          });
+        }
+        await this.propagationService.saveScenarioCoverage(Number(scenario.id_cenario), client);
+        scenarios.push({ ...this.formatResult(scenario, result, interestPoints, coverageByGateway, result.gateways.length * gatewayCost), analise_ambiental: environmental.summary });
+      }
+      await client.query("COMMIT");
+      return { ...this.formatGroup(scenarios), analise_ambiental: environmental.summary };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listRecommendations(studyId: number, userId: number) {
+    const { rows } = await pool.query(`
+      SELECT c.* FROM cenarios c JOIN estudos e ON e.id_estudo = c.id_estudo
+      WHERE c.id_estudo = $1 AND e.id_usuario = $2 AND c.executado_em IS NOT NULL AND
+        COALESCE(c.id_cenario_base, c.id_cenario) = (
+          SELECT MAX(base.id_cenario) FROM cenarios base
+          WHERE base.id_estudo = c.id_estudo AND base.id_cenario_base IS NULL
+          AND base.executado_em IS NOT NULL AND base.id_perfil_rf = e.id_perfil_rf
+          AND base.id_criterio_instalacao IS NOT DISTINCT FROM e.id_criterio_instalacao
+        )
+      ORDER BY c.id_cenario_base NULLS FIRST, c.id_cenario`, [studyId, userId]);
+    const scenarios: (ReturnType<RecommendationService["formatResult"]> & { analise_ambiental?: unknown })[] = [];
+    for (const scenario of rows as Cenario[]) {
+      const { rows: gateways } = await pool.query(`
+        SELECT cg.*, to_jsonb(p) AS candidato, ST_AsGeoJSON(cg.mancha_cobertura)::json AS geometry
+        FROM cenario_gateways cg JOIN estudo_pontos p ON p.id_estudo_ponto = cg.id_estudo_ponto
+        WHERE cg.id_cenario = $1 ORDER BY cg.ordem NULLS LAST, cg.id_cenario_gateway`, [scenario.id_cenario]);
+      const snapshot = gateways[0]?.parametros_calculo?.pontos_interesse_snapshot as EstudoPonto[] | undefined;
+      const interestPoints = snapshot ?? (await pool.query(
+        "SELECT * FROM estudo_pontos WHERE id_estudo = $1 AND papel IN ('interesse', 'ambos') AND COALESCE(atributos->>'tipo_ponto', '') <> 'vertice_area' ORDER BY id_estudo_ponto", [studyId],
+      )).rows as EstudoPonto[];
+      const { rows: attendances } = await pool.query(`
+        SELECT a.* FROM cenario_atendimentos a JOIN cenario_gateways cg USING (id_cenario_gateway)
+        WHERE cg.id_cenario = $1 ORDER BY a.id_atendimento`, [scenario.id_cenario]);
+      const pointsById = new Map(interestPoints.map((point) => [Number(point.id_estudo_ponto), point]));
+      const covered = new Set(attendances.map((attendance) => Number(attendance.id_estudo_ponto)));
+      const result: ResultadoCalculo = {
+        gateways: gateways.map((gateway) => ({
+          candidato: gateway.parametros_calculo?.candidato_snapshot ?? gateway.candidato,
+          atendimentos: attendances.filter((attendance) => Number(attendance.id_cenario_gateway) === Number(gateway.id_cenario_gateway))
+            .filter((attendance) => pointsById.has(Number(attendance.id_estudo_ponto)))
+            .map((attendance) => ({ ponto: pointsById.get(Number(attendance.id_estudo_ponto))!, distanciaM: Number(attendance.distancia_m), nivelSinalDbm: Number(attendance.nivel_sinal_estimado_dbm) })),
+        })),
+        pontosNaoCobertos: interestPoints.filter((point) => !covered.has(Number(point.id_estudo_ponto))),
+      };
+      const coverageByGateway = new Map(gateways.map((gateway) => [Number(gateway.id_estudo_ponto), {
+        geometry: gateway.geometry,
+        mean_range_m: gateway.parametros_calculo?.alcance_medio_m,
+        model: gateway.parametros_calculo?.modelo,
+        buildings_considered: gateway.parametros_calculo?.edificacoes_consideradas,
+        buildings_count: gateway.parametros_calculo?.quantidade_edificacoes,
+      } as Coverage]));
+      scenarios.push({
+        ...this.formatResult(scenario, result, interestPoints, coverageByGateway, Number(gateways[0]?.parametros_calculo?.custo_total_estimado ?? 0)),
+        analise_ambiental: gateways[0]?.parametros_calculo?.analise_ambiental,
+      });
+    }
+    return this.formatGroup(scenarios);
+  }
+
+  async selectRecommendation(studyId: number, scenarioId: number, userId: number) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const study = await client.query("SELECT id_estudo FROM estudos WHERE id_estudo = $1 AND id_usuario = $2 FOR UPDATE", [studyId, userId]);
+      if (!study.rows[0]) throw new Error("Estudo não encontrado.");
+      const scenario = await client.query(`
+        SELECT c.id_cenario FROM cenarios c JOIN estudos e ON e.id_estudo = c.id_estudo
+        WHERE c.id_cenario = $1 AND c.id_estudo = $2 AND e.id_usuario = $3 AND c.executado_em IS NOT NULL
+          AND COALESCE(c.id_cenario_base, c.id_cenario) = (
+            SELECT MAX(base.id_cenario) FROM cenarios base WHERE base.id_estudo = e.id_estudo
+              AND base.id_cenario_base IS NULL AND base.executado_em IS NOT NULL AND base.id_perfil_rf = e.id_perfil_rf
+              AND base.id_criterio_instalacao IS NOT DISTINCT FROM e.id_criterio_instalacao
+          )`, [scenarioId, studyId, userId]);
+      if (!scenario.rows[0]) throw new Error("Cenário não encontrado no grupo atual deste estudo.");
+      await client.query("UPDATE cenarios SET status = 'RASCUNHO', atualizado_em = NOW() WHERE id_estudo = $1 AND status = 'DEFINITIVO'", [studyId]);
+      await client.query("UPDATE cenarios SET status = 'DEFINITIVO', atualizado_em = NOW() WHERE id_cenario = $1 AND id_estudo = $2", [scenarioId, studyId]);
+      await client.query("COMMIT");
+      return { id_cenario_selecionado: scenarioId };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private formatGroup(scenarios: ReturnType<RecommendationService["formatResult"]>[]) {
     return {
-      ...formatted,
-      analise_ambiental: environmental.summary,
-      gateways: formatted.gateways.map(gw => ({
-        ...gw,
-        atributos: gatewayAttributes.get(gw.id_estudo_ponto) ?? gw.atributos,
-        alcance_medio_m: coverageByGateway.get(gw.id_estudo_ponto)?.mean_range_m ?? null,
-        modelo_propagacao: coverageByGateway.get(gw.id_estudo_ponto)?.model ?? null,
-        edificacoes_consideradas: coverageByGateway.get(gw.id_estudo_ponto)?.buildings_considered ?? false,
-        quantidade_edificacoes: coverageByGateway.get(gw.id_estudo_ponto)?.buildings_count ?? 0,
-      })),
+      ...scenarios[0], cenarios: scenarios,
+      alternativas_geradas: scenarios.length > 0,
+      id_cenario_selecionado: scenarios.find((scenario) => scenario.selecionado)?.id_cenario ?? null,
+      aviso: scenarios.length > 0 && scenarios.length < 6
+        ? `Foram encontradas ${scenarios.length} configurações distintas viáveis para os pontos e limites deste estudo.` : null,
     };
   }
 
@@ -307,11 +408,17 @@ export class RecommendationService {
 
         quantidade_atendidos: gateway.atendimentos.length, atributos: gateway.candidato.atributos ?? {},
 
+        alcance_medio_m: coverage.get(Number(gateway.candidato.id_estudo_ponto))?.mean_range_m ?? null,
+        modelo_propagacao: coverage.get(Number(gateway.candidato.id_estudo_ponto))?.model ?? null,
+        edificacoes_consideradas: coverage.get(Number(gateway.candidato.id_estudo_ponto))?.buildings_considered ?? false,
+        quantidade_edificacoes: coverage.get(Number(gateway.candidato.id_estudo_ponto))?.buildings_count ?? 0,
+
         mancha_cobertura: coverage.get(Number(gateway.candidato.id_estudo_ponto))?.geometry ?? null,
 
         atendidos: gateway.atendimentos.map((attendance) => ({
 
           id_estudo_ponto: Number(attendance.ponto.id_estudo_ponto), tipo_ativo: attendance.ponto.tipo_ativo,
+          atributos: { ...attendance.ponto.atributos, latitude: Number(attendance.ponto.latitude), longitude: Number(attendance.ponto.longitude) },
 
           distancia_m: Math.round(attendance.distanciaM), nivel_sinal_estimado_dbm: Math.round(attendance.nivelSinalDbm * 10) / 10,
 

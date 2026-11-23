@@ -129,6 +129,7 @@ export class RecommendationUtils {
     coverage: Map<number, AtendimentoCalculado[]>,
     maxGateways = Infinity,
     count = 6,
+    siteBonuses: Map<number, number> = new Map(),
   ): ResultadoCalculo[] {
     const signature = (result: ResultadoCalculo) => result.gateways
       .map((gateway) => gateway.candidato.id_estudo_ponto)
@@ -142,8 +143,10 @@ export class RecommendationUtils {
       priority(second) - priority(first) ||
       first.pontosNaoCobertos.length - second.pontosNaoCobertos.length ||
       first.gateways.length - second.gateways.length ||
+      second.gateways.reduce((sum, gateway) => sum + (siteBonuses.get(gateway.candidato.id_estudo_ponto) ?? 0), 0) -
+        first.gateways.reduce((sum, gateway) => sum + (siteBonuses.get(gateway.candidato.id_estudo_ponto) ?? 0), 0) ||
       signature(first).localeCompare(signature(second));
-    const initial = this.CalculateRecommendation(candidates, interestPoints, profile, coverage, maxGateways);
+    const initial = this.CalculateRecommendation(candidates, interestPoints, profile, coverage, siteBonuses, maxGateways);
     const results: ResultadoCalculo[] = [initial];
     const seenResults = new Set([signature(initial)]);
     const seenExclusions = new Set<string>();
@@ -178,6 +181,7 @@ export class RecommendationUtils {
         [...pending.values()],
         profile,
         coverage,
+        siteBonuses,
         Number.isFinite(maxGateways) ? maxGateways - 1 : Infinity,
       );
 
@@ -212,7 +216,7 @@ export class RecommendationUtils {
         seenExclusions.add(key);
         const result = this.CalculateRecommendation(
           candidates.filter((candidate) => !excluded.has(candidate.id_estudo_ponto)),
-          interestPoints, profile, coverage, maxGateways,
+          interestPoints, profile, coverage, siteBonuses, maxGateways,
         );
         if (result.gateways.length === 0) continue;
         queue.push({ excluded, result });

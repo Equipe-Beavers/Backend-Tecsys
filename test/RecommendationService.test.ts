@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RecommendationService } from "../src/services/RecommendationService.js";
+import { EnvironmentalService, EnvironmentalContext } from "../src/services/EnvironmentalService.js";
+import { StudyAssetPreparationService } from "../src/services/StudyAssetPreparationService.js";
 import { PropagationService } from "../src/services/PropagationService.js";
 import { createTestApp } from "./helpers/create-test-app.js";
 
@@ -14,7 +16,7 @@ const candidates = Array.from({ length: 7 }, (_, index) => ({
 }));
 const interest = [101, 102].map((id) => ({
   id_estudo_ponto: String(id), id_estudo: "1", papel: "interesse", prioridade: "normal",
-  latitude: -23.2, longitude: id === 101 ? -45.9 : -45.897, tipo_ativo: "POSTE", atributos: {},
+  latitude: id === 101 ? -23.199 : -23.196, longitude: -45.9, tipo_ativo: "POSTE", atributos: {},
 }));
 const geometry = { type: "Polygon", coordinates: [[[-45.9, -23.2], [-45.8, -23.2], [-45.9, -23.1], [-45.9, -23.2]]] };
 
@@ -27,12 +29,14 @@ describe("RecommendationService scenario groups", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     scenarios.length = gateways.length = attendances.length = 0;
+    vi.spyOn(StudyAssetPreparationService.prototype, "prepare").mockResolvedValue({ totalCandidates: 7, importedCandidates: 0 });
+    vi.spyOn(EnvironmentalService.prototype, "prepare").mockImplementation(async () => new EnvironmentalContext(null, null, null, new Map(candidates.map(point => [Number(point.id_estudo_ponto), point.relevo_m]))));
     client.query.mockReset();
     client.release.mockReset();
     database.query.mockReset();
     database.connect.mockResolvedValue(client);
     database.query.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT id_estudo FROM estudos")) return { rows: [{ id_estudo: "1" }] };
+      if (sql.includes("FROM estudos WHERE")) return { rows: [{ id_estudo: "1" }] };
       if (sql.includes("SELECT * FROM perfis_rf")) return { rows: [{ capacidade_max_equipamentos: 4, custo_estimado_gateway: "50" }] };
       if (sql.includes("SELECT * FROM estudo_pontos")) return { rows: [...candidates, ...interest] };
       return { rows: [] };
@@ -91,13 +95,13 @@ describe("RecommendationService scenario groups", () => {
 
   it("applies asset type, relief and distance rules from the installation criterion", async () => {
     database.query.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT id_estudo FROM estudos")) return { rows: [{ id_estudo: "1" }] };
+      if (sql.includes("FROM estudos WHERE")) return { rows: [{ id_estudo: "1" }] };
       if (sql.includes("SELECT * FROM perfis_rf")) return { rows: [{ capacidade_max_equipamentos: 4, custo_estimado_gateway: "50" }] };
       if (sql.includes("SELECT * FROM estudo_pontos")) return { rows: [...candidates, ...interest] };
       if (sql.includes("criterios_instalacao")) return { rows: [{
         tipos_elementos_permitidos: ["POSTE"], tipos_elementos_proibidos: ["REGULADOR"],
         distancia_minima_ativos_m: "50", distancia_maxima_ativos_m: "200",
-        limite_gateways: null, custo_maximo: null,
+        limite_gateways: 1, custo_maximo: null,
         relevo: { altitude_minima_m: 20, altitude_maxima_m: 100 },
       }] };
       return { rows: [] };
@@ -144,6 +148,40 @@ describe("RecommendationService scenario groups", () => {
     await expect(new RecommendationService().generateRecommendation({ id_usuario: 1, id_estudo: 1, id_perfil_rf: 1 })).rejects.toThrow("database unavailable");
     expect(client.query).toHaveBeenLastCalledWith("ROLLBACK");
     expect(client.release).toHaveBeenCalled();
+  });
+
+  it("loads a legacy single scenario without snapshots or regenerating it", async () => {
+    database.query.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT c.* FROM cenarios")) return { rows: [{
+        id_cenario: "85", id_estudo: "1", id_cenario_base: null,
+        nome: "Estudo salvo", status: "DEFINITIVO", quantidade_gateways: 1,
+        pontos_interesse: 2, pontos_cobertos: 1, pontos_nao_cobertos: 1,
+        percentual_cobertura: "50", executado_em: "2026-11-22",
+      }] };
+      if (sql.includes("SELECT cg.*")) return { rows: [{
+        id_cenario_gateway: "9", id_estudo_ponto: "1", candidato: candidates[0],
+        geometry, parametros_calculo: null,
+      }] };
+      if (sql.includes("SELECT * FROM estudo_pontos")) return { rows: interest };
+      if (sql.includes("SELECT a.*")) return { rows: [{
+        id_cenario_gateway: "9", id_estudo_ponto: "101",
+        distancia_m: "20", nivel_sinal_estimado_dbm: "-90",
+      }] };
+      throw new Error("Unexpected query: " + sql);
+    });
+    const loaded = await new RecommendationService().listRecommendations(1, 7);
+    expect(database.query.mock.calls[0]![1]).toEqual([1, 7]);
+    expect(loaded.alternativas_geradas).toBe(true);
+    expect(loaded.id_cenario_selecionado).toBe(85);
+    expect(loaded.cenarios[0]!.ativos_mapa.map(asset => asset.coberto)).toEqual([true, false]);
+    expect(loaded.cenarios[0]!.gateways[0]!.mancha_cobertura).toEqual(geometry);
+    expect(loaded.cenarios[0]!.gateways[0]!.atendidos[0]!.distancia_m).toBe(20);
+    expect(PropagationService.prototype.calculateLinks).not.toHaveBeenCalled();
+  });
+
+  it("returns an empty group so the frontend can generate a new recommendation", async () => {
+    const loaded = await new RecommendationService().listRecommendations(1, 1);
+    expect(loaded).toMatchObject({ cenarios: [], alternativas_geradas: false, id_cenario_selecionado: null });
   });
 
   it("selects exactly one scenario without modifying gateway data", async () => {
